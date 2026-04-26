@@ -1,0 +1,5 @@
+vault_dir: ./vault
+output_dir: ./public
+overlay_dir: ./static
+port: 8080
+agent_port: 8081
