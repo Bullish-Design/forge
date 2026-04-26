@@ -16,6 +16,9 @@ dependencies = [
   "typer>=0.12",
   "httpx>=0.28",
   "pyyaml>=6.0",
+  "forge-overlay",
+  "obsidian-agent",
+  "obsidian-ops",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +28,19 @@ dev = [
   "mypy>=1.10",
   "ruff>=0.5.0",
 ]
+
+
+[project.scripts]
+forge = "forge_cli.__main__:main"
+forge-demo-setup = "forge_cli.demo_entrypoints:demo_setup"
+forge-demo-start = "forge_cli.demo_entrypoints:demo_start"
+forge-demo-validate = "forge_cli.demo_entrypoints:demo_validate"
+forge-demo-run = "forge_cli.demo_entrypoints:demo_run"
+forge-demo-cleanup = "forge_cli.demo_entrypoints:demo_cleanup"
+forge-demo-start-free-explore = "forge_cli.demo_entrypoints:demo_start_free_explore"
+forge-demo-run-free-explore = "forge_cli.demo_entrypoints:demo_run_free_explore"
+forge-docker-up = "forge_cli.demo_entrypoints:docker_up"
+forge-docker-down = "forge_cli.demo_entrypoints:docker_down"
 
 #[project.urls]
 #homepage = "https://github.com/Bullish-Design/forge"
@@ -49,7 +65,15 @@ include = [
 ]
 
 [tool.uv]
-# Keep the default behavior; this section is here so you can extend it later if needed.
+
+[tool.uv.sources]
+forge-overlay = { git = "https://github.com/Bullish-Design/forge-overlay.git", tag = "v0.2.1" }
+obsidian-agent = { git = "https://github.com/Bullish-Design/obsidian-agent.git", tag = "v0.3.1" }
+obsidian-ops = { git = "https://github.com/Bullish-Design/obsidian-ops.git", tag = "v0.7.1" }
+
+[tool.forge.external]
+kiln_fork_repo = "https://github.com/Bullish-Design/kiln-fork.git"
+kiln_fork_tag = "v0.10.3"
 
 [tool.pytest.ini_options]
 addopts = "-q --cov=forge_cli --cov-report=term-missing"
@@ -89,6 +113,3 @@ ignore = []
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
-
-[project.scripts]
-forge = "forge_cli.__main__:main"

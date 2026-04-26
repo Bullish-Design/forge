@@ -245,7 +245,7 @@ Trailing slashes redirect: `/about/` -> 301 -> `/about`.
 
 **Language:** Python (FastAPI + PydanticAI)
 **Role:** LLM-powered vault editing service
-**Version:** 0.2.0
+**Version:** 0.3.1
 **Entry point:** `obsidian-agent`
 
 obsidian-agent exposes an HTTP API for AI-assisted vault editing. It runs a
@@ -380,7 +380,7 @@ Write tools: `write_file`, `delete_file`, `set_frontmatter`,
 
 **Language:** Python
 **Role:** Sandboxed vault operations library
-**Version:** 0.5.0
+**Version:** 0.7.1
 
 obsidian-ops provides the `Vault` class for all file I/O against an Obsidian
 vault. It enforces path sandboxing, provides structured markdown operations,
