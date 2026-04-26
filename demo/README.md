@@ -15,6 +15,8 @@ Run from the `forge` repo root:
 
 ```bash
 devenv shell -- uv run demo/scripts/validate_full_stack.py
+# equivalent entrypoint:
+devenv shell -- uv run forge-demo-validate
 ```
 
 ## Interactive Walkthrough
@@ -23,10 +25,28 @@ Run the keypress-driven walkthrough script:
 
 ```bash
 devenv shell -- uv run demo/scripts/run_demo.py
+# equivalent entrypoint:
+devenv shell -- uv run forge-demo-run
 ```
 
 The script keeps the site live during each step and pauses for operator progression.
 Set `AUTO_ADVANCE=1` for non-interactive execution.
+
+## Free-Explore Demo (Real vLLM Backend)
+
+Runs the same UI stack, but API interactivity routes through a real vLLM endpoint.
+
+```bash
+devenv shell -- uv run demo/scripts/run_free_explore.py
+# equivalent entrypoint:
+devenv shell -- uv run forge-demo-run-free-explore
+```
+
+By default this targets `http://remora-server:8000/v1`.
+Optional overrides:
+- `DEMO_VLLM_BASE_URL` (default `http://remora-server:8000/v1`)
+- `DEMO_VLLM_MODEL` (default: auto-detect first model from `/v1/models`)
+- `DEMO_VLLM_TIMEOUT_S` (default `60`)
 
 ## Stable Setup/Cleanup Commands
 
@@ -34,6 +54,11 @@ Set `AUTO_ADVANCE=1` for non-interactive execution.
 devenv shell -- uv run demo/scripts/setup.py
 devenv shell -- uv run demo/scripts/start_stack.py
 devenv shell -- uv run demo/scripts/cleanup.py
+# equivalent entrypoints:
+devenv shell -- uv run forge-demo-setup
+devenv shell -- uv run forge-demo-start
+devenv shell -- uv run forge-demo-cleanup
+devenv shell -- uv run forge-demo-start-free-explore
 ```
 
 `setup.py` always resets the demo runtime to a known state.
@@ -60,7 +85,8 @@ http://127.0.0.1:18080/index.html
 3. Overlay injection is present (`/ops/ops.css`, `/ops/ops.js` in served HTML).
 4. Rebuild webhook delivery is confirmed (`POST /internal/rebuild` -> `204`) after real vault mutation.
 5. `/api/health`, `/api/agent/apply`, and `/api/undo` work through overlay proxy.
-6. Apply/undo produce real vault and rendered HTML changes end-to-end.
+6. Sync endpoints (`ensure`, `remote`, `sync`, `status`) work through overlay proxy.
+7. Apply/undo produce real vault and rendered HTML changes end-to-end.
 
 ## Troubleshooting
 

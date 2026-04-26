@@ -13,6 +13,8 @@ import re
 import subprocess
 import sys
 import time
+import tty
+import termios
 from urllib import error as urlerror
 from urllib import request
 
@@ -55,7 +57,23 @@ def pause_step(prompt: str) -> None:
         log(f"{prompt} [auto-advance]")
         time.sleep(1)
         return
-    input(f"\n{prompt}")
+    print(f"\n{prompt}", end="", flush=True)
+    read_single_key()
+    print("")
+
+
+def read_single_key() -> str:
+    if not sys.stdin.isatty():
+        line = input()
+        return line[:1] if line else "\n"
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        return sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
 def run_helper_script(name: str, quiet: bool = False) -> None:
@@ -111,6 +129,18 @@ def http_post_json(url: str, payload: dict[str, object]) -> bytes:
         return response.read()
 
 
+def http_put_json(url: str, payload: dict[str, object]) -> bytes:
+    body = json.dumps(payload).encode("utf-8")
+    req = request.Request(
+        url=url,
+        method="PUT",
+        data=body,
+        headers={"content-type": "application/json"},
+    )
+    with request.urlopen(req, timeout=20) as response:
+        return response.read()
+
+
 def wait_until(predicate, timeout_s: float, interval_s: float = 0.25) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -125,6 +155,13 @@ def count_pattern(path: Path, pattern: str) -> int:
         return 0
     text = path.read_text(encoding="utf-8", errors="ignore")
     return len(re.findall(pattern, text))
+
+
+def count_substring(path: Path, needle: str) -> int:
+    if not path.exists():
+        return 0
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    return text.count(needle)
 
 
 def show_site_urls() -> None:
@@ -142,7 +179,9 @@ def maybe_keep_stack_running() -> None:
         return
 
     print("\nPress k to keep the stack running for manual exploration.")
-    keep = input("Press Enter for cleanup, or type k then Enter to keep it running: ").strip().lower()
+    print("Press any key for cleanup, or k to keep it running: ", end="", flush=True)
+    keep = read_single_key().strip().lower()
+    print("")
     if keep == "k":
         KEEP_STACK_RUNNING = True
 
@@ -154,7 +193,7 @@ def run_walkthrough() -> None:
     print("This walkthrough uses a real localhost stack and pauses between steps.")
     print("Talk track reference: demo/DEMO_SCRIPT.md")
 
-    pause_step("Press Enter to initialize a clean demo runtime...")
+    pause_step("Press any key to initialize a clean demo runtime...")
 
     run_helper_script("cleanup.py", quiet=True)
     run_helper_script("setup.py")
@@ -167,7 +206,7 @@ def run_walkthrough() -> None:
     print(" - kiln-fork is running watch mode with --no-serve and --on-rebuild.")
     print(" - forge-overlay serves generated output and injects demo overlay assets.")
     print(" - dummy API provides deterministic apply/undo responses.")
-    pause_step("Open the URLs and inspect baseline behavior, then press Enter...")
+    pause_step("Open the URLs and inspect baseline behavior, then press any key...")
 
     step_header("2", "Show Kiln Rendering Capabilities")
     print("Suggested pages to inspect:")
@@ -175,7 +214,7 @@ def run_walkthrough() -> None:
     print(" - /canvas/roadmap (canvas output)")
     print(" - /references/kiln-capabilities (feature matrix)")
     print(" - /experiments/live-reload (watch target)")
-    pause_step("After reviewing these pages, press Enter...")
+    pause_step("After reviewing these pages, press any key...")
 
     step_header("3", "Trigger A Real Incremental Rebuild")
     token = f"walkthrough-mutation-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}"
@@ -201,17 +240,46 @@ def run_walkthrough() -> None:
 
     print(f"Mutation token appended and rendered: {token}")
     print("Refresh /experiments/live-reload to confirm the update.")
-    pause_step("After confirming live-reload update, press Enter...")
+    pause_step("After confirming live-reload update, press any key...")
 
     step_header("4", "Demonstrate Overlay API Proxy Health")
     health_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api/health"
     health_payload = json.loads(http_get(health_url).decode("utf-8"))
     print("Proxy health response:")
     print(json.dumps(health_payload, indent=2, sort_keys=True))
-    pause_step("After reviewing health output, press Enter...")
+    pause_step("After reviewing health output, press any key...")
 
-    step_header("5", "Run Deterministic Apply Through Overlay")
+    step_header("5", "Demonstrate Sync Bootstrap Endpoints")
+    sync_ensure_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api/vault/vcs/sync/ensure"
+    sync_remote_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api/vault/vcs/sync/remote"
+    sync_run_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api/vault/vcs/sync"
+    sync_status_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api/vault/vcs/sync/status"
+
+    ensure_payload = json.loads(http_post_json(sync_ensure_url, {}).decode("utf-8"))
+    remote_payload = json.loads(
+        http_put_json(
+            sync_remote_url,
+            {"remote": "origin", "url": "https://github.com/example/demo-vault.git"},
+        ).decode("utf-8")
+    )
+    sync_payload = json.loads(http_post_json(sync_run_url, {"remote": "origin"}).decode("utf-8"))
+    status_payload = json.loads(http_get(sync_status_url).decode("utf-8"))
+
+    print("Ensure response:")
+    print(json.dumps(ensure_payload, indent=2, sort_keys=True))
+    print("Remote configuration response:")
+    print(json.dumps(remote_payload, indent=2, sort_keys=True))
+    print("Sync run response:")
+    print(json.dumps(sync_payload, indent=2, sort_keys=True))
+    print("Sync status response:")
+    print(json.dumps(status_payload, indent=2, sort_keys=True))
+    pause_step("After reviewing sync endpoint output, press any key...")
+
+    step_header("6", "Run Deterministic Apply Through Overlay")
     apply_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api/agent/apply"
+    note_html = PUBLIC_DIR / "projects" / "forge-v2.html"
+    marker = "Dummy LLM Update"
+    baseline_marker_count = count_substring(note_html, marker)
     apply_payload = json.loads(
         http_post_json(
             apply_url,
@@ -223,33 +291,38 @@ def run_walkthrough() -> None:
     )
     print("Apply response:")
     print(json.dumps(apply_payload, indent=2, sort_keys=True))
+    if not apply_payload.get("ok"):
+        raise fail(f"apply request failed: {apply_payload}")
 
-    note_html = PUBLIC_DIR / "projects" / "forge-v2.html"
+    print("Waiting for rendered apply update...")
     if not wait_until(
-        lambda: note_html.exists() and "Dummy LLM Update" in note_html.read_text(encoding="utf-8", errors="ignore"),
+        lambda: note_html.exists() and count_substring(note_html, marker) > baseline_marker_count,
         timeout_s=45,
     ):
         raise fail("apply marker not observed in rendered note")
 
     print("Apply completed. Refresh /projects/forge-v2 to see Dummy LLM Update.")
-    pause_step("After confirming apply output in browser, press Enter...")
+    pause_step("After confirming apply output in browser, press any key...")
 
-    step_header("6", "Run Undo Through Overlay")
-    undo_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api/undo"
+    step_header("7", "Run Undo Through Overlay")
+    undo_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api/agent/undo"
     undo_payload = json.loads(http_post_json(undo_url, {}).decode("utf-8"))
     print("Undo response:")
     print(json.dumps(undo_payload, indent=2, sort_keys=True))
+    if not undo_payload.get("ok"):
+        raise fail(f"undo request failed: {undo_payload}")
 
+    print("Waiting for rendered undo update...")
     if not wait_until(
-        lambda: note_html.exists() and "Dummy LLM Update" not in note_html.read_text(encoding="utf-8", errors="ignore"),
+        lambda: note_html.exists() and count_substring(note_html, marker) == baseline_marker_count,
         timeout_s=45,
     ):
         raise fail("undo marker removal not observed in rendered note")
 
     print("Undo completed. Refresh /projects/forge-v2 to confirm marker removal.")
-    pause_step("After confirming undo output in browser, press Enter...")
+    pause_step("After confirming undo output in browser, press any key...")
 
-    step_header("7", "Wrap-Up")
+    step_header("8", "Wrap-Up")
     kiln_rebuilds = count_pattern(kiln_log, r"rebuilding after file change")
     overlay_hooks = count_pattern(overlay_log, r'POST /internal/rebuild HTTP/1.1" 204')
     print("Final checks:")

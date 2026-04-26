@@ -9,6 +9,10 @@ This server mimics the subset of agent endpoints needed by the demo:
 - GET  /api/health
 - POST /api/agent/apply (alias: /api/apply)
 - POST /api/agent/undo  (alias: /api/undo)
+- POST /api/vault/vcs/sync/ensure
+- PUT  /api/vault/vcs/sync/remote
+- POST /api/vault/vcs/sync
+- GET  /api/vault/vcs/sync/status
 """
 
 from __future__ import annotations
@@ -29,6 +33,10 @@ class DemoState:
     lock: threading.Lock = field(default_factory=threading.Lock)
     apply_count: int = 0
     history: list[tuple[Path, str]] = field(default_factory=list)
+    sync_remote: str = "origin"
+    sync_remote_url: str | None = None
+    sync_bootstrapped: bool = False
+    sync_count: int = 0
 
     def resolve_target(self, raw_path: str | None) -> tuple[Path, str]:
         rel = (raw_path or "projects/forge-v2.md").lstrip("/")
@@ -79,6 +87,43 @@ class DemoState:
                 "changed_files": [rel],
             }
 
+    def sync_ensure(self) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "status": "ready",
+            "detail": "dummy sync backend ready",
+        }
+
+    def sync_remote_configure(self, remote: str, url: str) -> dict[str, Any]:
+        self.sync_remote = remote
+        self.sync_remote_url = url
+        return {
+            "ok": True,
+            "remote": self.sync_remote,
+            "url": self.sync_remote_url,
+        }
+
+    def sync_run(self, remote: str) -> dict[str, Any]:
+        self.sync_count += 1
+        self.sync_bootstrapped = True
+        self.sync_remote = remote
+        return {
+            "ok": True,
+            "sync_ok": True,
+            "remote": self.sync_remote,
+            "sync_count": self.sync_count,
+            "provider": "dummy-sync",
+        }
+
+    def sync_status(self) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "status": "ready" if self.sync_bootstrapped else "not_configured",
+            "remote": self.sync_remote,
+            "remote_url": self.sync_remote_url,
+            "sync_count": self.sync_count,
+        }
+
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "ForgeDummyAPI/1.0"
@@ -122,6 +167,9 @@ class Handler(BaseHTTPRequestHandler):
                 }
             )
             return
+        if self.path == "/api/vault/vcs/sync/status":
+            self._send_json(self.state.sync_status())
+            return
 
         self._send_json({"ok": False, "error": f"Not found: {self.path}"}, status=HTTPStatus.NOT_FOUND)
 
@@ -141,6 +189,34 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path in {"/api/agent/undo", "/api/undo"}:
             self._send_json(self.state.undo())
+            return
+        if self.path == "/api/vault/vcs/sync/ensure":
+            self._send_json(self.state.sync_ensure())
+            return
+        if self.path == "/api/vault/vcs/sync":
+            try:
+                payload = self._read_json()
+                remote = str(payload.get("remote", self.state.sync_remote)).strip() or self.state.sync_remote
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(self.state.sync_run(remote))
+            return
+
+        self._send_json({"ok": False, "error": f"Not found: {self.path}"}, status=HTTPStatus.NOT_FOUND)
+
+    def do_PUT(self) -> None:  # noqa: N802
+        if self.path == "/api/vault/vcs/sync/remote":
+            try:
+                payload = self._read_json()
+                remote = str(payload.get("remote", "origin")).strip() or "origin"
+                url = str(payload.get("url", "")).strip()
+                if not url:
+                    raise ValueError("url is required")
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(self.state.sync_remote_configure(remote=remote, url=url))
             return
 
         self._send_json({"ok": False, "error": f"Not found: {self.path}"}, status=HTTPStatus.NOT_FOUND)

@@ -46,6 +46,59 @@ assert payload.get("ok") is True
 assert payload.get("provider") == "dummy-llm"
 PY
 
+log "asserting sync endpoint proxy + bootstrap lifecycle"
+SYNC_ENSURE_JSON="$RUNTIME_DIR/sync_ensure.json"
+curl -fsS -X POST "http://$DEMO_OVERLAY_HOST:$DEMO_OVERLAY_PORT/api/vault/vcs/sync/ensure" \
+  -H 'content-type: application/json' \
+  -d '{}' \
+  > "$SYNC_ENSURE_JSON"
+python - "$SYNC_ENSURE_JSON" <<'PY'
+import json
+import sys
+
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+assert payload.get("status") == "ready"
+PY
+
+SYNC_REMOTE_JSON="$RUNTIME_DIR/sync_remote.json"
+curl -fsS -X PUT "http://$DEMO_OVERLAY_HOST:$DEMO_OVERLAY_PORT/api/vault/vcs/sync/remote" \
+  -H 'content-type: application/json' \
+  -d '{"remote":"origin","url":"https://github.com/example/demo-vault.git"}' \
+  > "$SYNC_REMOTE_JSON"
+python - "$SYNC_REMOTE_JSON" <<'PY'
+import json
+import sys
+
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+assert payload.get("remote") == "origin"
+assert payload.get("url") == "https://github.com/example/demo-vault.git"
+PY
+
+SYNC_RUN_JSON="$RUNTIME_DIR/sync_run.json"
+curl -fsS -X POST "http://$DEMO_OVERLAY_HOST:$DEMO_OVERLAY_PORT/api/vault/vcs/sync" \
+  -H 'content-type: application/json' \
+  -d '{"remote":"origin"}' \
+  > "$SYNC_RUN_JSON"
+python - "$SYNC_RUN_JSON" <<'PY'
+import json
+import sys
+
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+assert payload.get("sync_ok") is True
+assert payload.get("remote") == "origin"
+PY
+
+SYNC_STATUS_JSON="$RUNTIME_DIR/sync_status.json"
+curl -fsS "http://$DEMO_OVERLAY_HOST:$DEMO_OVERLAY_PORT/api/vault/vcs/sync/status" > "$SYNC_STATUS_JSON"
+python - "$SYNC_STATUS_JSON" <<'PY'
+import json
+import sys
+
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+assert payload.get("status") == "ready"
+assert payload.get("sync_count", 0) >= 1
+PY
+
 log "asserting rebuild webhook propagation"
 
 TARGET_HTML="$PUBLIC_DIR/experiments/live-reload.html"

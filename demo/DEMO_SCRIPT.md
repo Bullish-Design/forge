@@ -66,7 +66,24 @@ Talking points:
 Operator actions:
 - Review printed JSON from `GET /api/health` via overlay.
 
-## Step 5: Demonstrate Apply Through Overlay
+## Step 5: Demonstrate Sync Bootstrap Endpoints
+
+Objective:
+- Show the new sync endpoint flow that Forge now uses at startup.
+
+Talking points:
+- Forge bootstrap sequence is ensure -> remote config -> sync -> status.
+- In this deterministic demo backend, these endpoints are mocked but shape-compatible with obsidian-agent.
+- In real deployments this drives jj/git sync readiness, remote wiring, and initial fetch/rebase/push.
+
+Operator actions:
+- Review printed JSON for:
+  - `POST /api/vault/vcs/sync/ensure`
+  - `PUT /api/vault/vcs/sync/remote`
+  - `POST /api/vault/vcs/sync`
+  - `GET /api/vault/vcs/sync/status`
+
+## Step 6: Demonstrate Apply Through Overlay
 
 Objective:
 - Show deterministic “LLM-style” mutation flow end-to-end.
@@ -81,7 +98,7 @@ Operator actions:
 - Review JSON apply response.
 - Refresh `projects/forge-v2` and point out `Dummy LLM Update`.
 
-## Step 6: Demonstrate Undo Through Overlay
+## Step 7: Demonstrate Undo Through Overlay
 
 Objective:
 - Show rollback behavior and resulting rebuild.
@@ -95,7 +112,7 @@ Operator actions:
 - Review JSON undo response.
 - Refresh `projects/forge-v2` and confirm marker removal.
 
-## Step 7: Wrap-Up
+## Step 8: Wrap-Up
 
 Objective:
 - Summarize proven behaviors and next-stage readiness.
@@ -104,6 +121,7 @@ Talking points:
 - Confirmed kiln rendering + incremental rebuild behavior.
 - Confirmed kiln-fork webhook integration (`--on-rebuild`) through overlay.
 - Confirmed overlay injection and API proxy path.
+- Confirmed sync bootstrap endpoint flow via overlay proxy.
 - Confirmed apply/undo mutation lifecycle using deterministic backend.
 - System is ready for live demos and for swapping dummy backend with real agent/LLM service.
 
