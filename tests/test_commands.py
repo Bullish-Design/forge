@@ -2,39 +2,33 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+import subprocess
 
 import pytest
 from typer.testing import CliRunner
+import yaml
 
 from forge_cli.commands import app
 from forge_cli.config import ForgeConfig
 from forge_cli.processes import ProcessManager, wait_for_http
 
 
-def test_dev_prints_startup_order(tmp_path: Path) -> None:
-    cfg = tmp_path / "forge.yaml"
-    cfg.write_text("vault_dir: ./vault\n", encoding="utf-8")
-
-    runner = CliRunner()
-    result = runner.invoke(app, ["dev", "--config", str(cfg)])
-
-    assert result.exit_code == 0
-    assert "startup-order: overlay -> agent -> kiln" in result.stdout
-
-
 class _DummyProcess:
-    def __init__(self) -> None:
+    def __init__(self, return_code: int | None = None) -> None:
         self.stdout: io.StringIO | None = io.StringIO("")
-        self._alive = True
+        self._alive = return_code is None
+        self._return_code = 0 if return_code is None else return_code
 
     def poll(self) -> int | None:
-        return None if self._alive else 0
+        return None if self._alive else self._return_code
 
     def terminate(self) -> None:
         self._alive = False
 
     def wait(self, timeout: float | None = None) -> int:
-        return 0
+        _ = timeout
+        self._alive = False
+        return self._return_code
 
     def kill(self) -> None:
         self._alive = False
@@ -125,3 +119,133 @@ def test_wait_for_http_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(TimeoutError):
         wait_for_http("http://127.0.0.1:9999/health", timeout_s=0.01, interval_s=0.0)
+
+
+def test_dev_starts_processes_in_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    cfg = ForgeConfig(vault_dir=tmp_path / "vault", output_dir=tmp_path / "public", overlay_dir=tmp_path / "overlay")
+    calls: list[str] = []
+
+    class _FakeManager:
+        def start_overlay(self, _config: ForgeConfig):
+            calls.append("overlay")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def start_agent(self, _config: ForgeConfig):
+            calls.append("agent")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def start_kiln(self, _config: ForgeConfig):
+            calls.append("kiln")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def stop_all(self, timeout_s: float = 5.0):
+            _ = timeout_s
+            calls.append("stop")
+
+    monkeypatch.setattr("forge_cli.commands.ProcessManager", _FakeManager)
+    monkeypatch.setattr("forge_cli.commands.ForgeConfig.load", lambda _path: cfg)
+    monkeypatch.setattr("forge_cli.commands._wait_for_processes", lambda _processes: None)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["dev", "--config", "forge.yaml"])
+
+    assert result.exit_code == 0
+    assert calls == ["overlay", "agent", "kiln", "stop"]
+    assert "startup-order: overlay -> agent -> kiln" in result.stdout
+
+
+def test_serve_starts_only_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    cfg = ForgeConfig(vault_dir=tmp_path / "vault", output_dir=tmp_path / "public", overlay_dir=tmp_path / "overlay")
+    calls: list[str] = []
+
+    class _FakeManager:
+        def start_overlay(self, _config: ForgeConfig):
+            calls.append("overlay")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def stop_all(self, timeout_s: float = 5.0):
+            _ = timeout_s
+            calls.append("stop")
+
+    monkeypatch.setattr("forge_cli.commands.ProcessManager", _FakeManager)
+    monkeypatch.setattr("forge_cli.commands.ForgeConfig.load", lambda _path: cfg)
+    monkeypatch.setattr("forge_cli.commands._wait_for_processes", lambda _processes: None)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["serve", "--config", "forge.yaml"])
+
+    assert result.exit_code == 0
+    assert calls == ["overlay", "stop"]
+
+
+def test_generate_invokes_kiln_generate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    cfg = ForgeConfig(
+        vault_dir=tmp_path / "vault",
+        output_dir=tmp_path / "public",
+        overlay_dir=tmp_path / "overlay",
+        kiln_bin="kiln-custom",
+        kiln_theme="nord",
+        kiln_font="merriweather",
+        kiln_lang="it",
+        kiln_site_name="Team Notes",
+    )
+    invoked: list[list[str]] = []
+
+    def fake_run(command: list[str], check: bool) -> subprocess.CompletedProcess[bytes]:
+        assert check is True
+        invoked.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr("forge_cli.commands.ForgeConfig.load", lambda _path: cfg)
+    monkeypatch.setattr("forge_cli.commands.subprocess.run", fake_run)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["generate", "--config", "forge.yaml"])
+
+    assert result.exit_code == 0
+    assert invoked
+    assert invoked[0][0:2] == ["kiln-custom", "generate"]
+    assert "--input" in invoked[0]
+    assert "--output" in invoked[0]
+    assert "--name" in invoked[0]
+    assert "Team Notes" in invoked[0]
+
+
+def test_init_scaffolds_directories_and_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    vault_dir = tmp_path / "vault"
+    output_dir = tmp_path / "public"
+    overlay_dir = tmp_path / "overlay"
+    config_path = tmp_path / "forge.yaml"
+
+    monkeypatch.setenv("FORGE_VAULT_DIR", str(vault_dir))
+    monkeypatch.setenv("FORGE_OUTPUT_DIR", str(output_dir))
+    monkeypatch.setenv("FORGE_OVERLAY_DIR", str(overlay_dir))
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["init", "--config", str(config_path)])
+
+    assert result.exit_code == 0
+    assert vault_dir.exists()
+    assert output_dir.exists()
+    assert overlay_dir.exists()
+    assert config_path.exists()
+
+    parsed = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert parsed["vault_dir"] == str(vault_dir)
+    assert parsed["output_dir"] == str(output_dir)
+    assert parsed["overlay_dir"] == str(overlay_dir)
+
+
+def test_init_requires_force_when_config_exists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    config_path = tmp_path / "forge.yaml"
+    original = "vault_dir: ./vault\n"
+    config_path.write_text(original, encoding="utf-8")
+    monkeypatch.setenv("FORGE_VAULT_DIR", str(tmp_path / "vault"))
+    monkeypatch.setenv("FORGE_OUTPUT_DIR", str(tmp_path / "public"))
+    monkeypatch.setenv("FORGE_OVERLAY_DIR", str(tmp_path / "overlay"))
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["init", "--config", str(config_path)])
+
+    assert result.exit_code == 2
+    assert config_path.read_text(encoding="utf-8") == original
