@@ -10,7 +10,7 @@ import typer
 import yaml
 
 from forge_cli.config import ForgeConfig
-from forge_cli.processes import ManagedProcess, ProcessManager
+from forge_cli.processes import ManagedProcess, ProcessLaunchError, ProcessManager
 
 app = typer.Typer(add_completion=False)
 
@@ -34,6 +34,9 @@ def dev(
         typer.echo(f"agent={cfg.agent_url}")
         typer.echo(f"on_rebuild={cfg.on_rebuild_url}")
         _wait_for_processes([overlay, agent, kiln])
+    except (ProcessLaunchError, TimeoutError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     except KeyboardInterrupt:
         typer.echo("shutting down forge dev")
     finally:
@@ -77,6 +80,9 @@ def serve(
         overlay = manager.start_overlay(cfg)
         typer.echo(f"forge serve running on {cfg.overlay_url}")
         _wait_for_processes([overlay])
+    except (ProcessLaunchError, TimeoutError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     except KeyboardInterrupt:
         typer.echo("shutting down forge serve")
     finally:

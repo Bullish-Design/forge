@@ -32,20 +32,22 @@ class ManagedProcess:
 
 def wait_for_http(
     url: str,
-    timeout_s: float = 20.0,
+    timeout_s: float = 60.0,
     interval_s: float = 0.2,
     expected_status: int = 200,
+    expected_statuses: set[int] | None = None,
 ) -> None:
     """Poll ``url`` until it returns ``expected_status`` or timeout."""
 
     deadline = time.monotonic() + timeout_s
     last_error: BaseException | None = None
+    statuses = {expected_status} if expected_statuses is None else expected_statuses
 
     with httpx.Client(follow_redirects=True) as client:
         while time.monotonic() < deadline:
             try:
                 with client.stream("GET", url, timeout=1.0) as response:
-                    if response.status_code == expected_status:
+                    if response.status_code in statuses:
                         return
                     last_error = RuntimeError(f"status={response.status_code}")
             except httpx.HTTPError as exc:
@@ -123,7 +125,10 @@ class ProcessManager:
                 str(config.port),
             ],
         )
-        wait_for_http(f"{config.overlay_url}/ops/events")
+        wait_for_http(
+            f"{config.overlay_url}/",
+            expected_statuses={200, 301, 302, 404},
+        )
         return process
 
     def start_agent(self, config: ForgeConfig) -> ManagedProcess:

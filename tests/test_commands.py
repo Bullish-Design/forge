@@ -66,8 +66,14 @@ def test_process_manager_starts_overlay_agent_then_kiln(monkeypatch: pytest.Monk
         launched.append((cmd, env))
         return _DummyProcess()
 
-    def fake_wait(url: str, timeout_s: float = 20.0, interval_s: float = 0.2, expected_status: int = 200) -> None:
-        _ = timeout_s, interval_s, expected_status
+    def fake_wait(
+        url: str,
+        timeout_s: float = 60.0,
+        interval_s: float = 0.2,
+        expected_status: int = 200,
+        expected_statuses: set[int] | None = None,
+    ) -> None:
+        _ = timeout_s, interval_s, expected_status, expected_statuses
         waited.append(url)
 
     monkeypatch.setattr("forge_cli.processes.wait_for_http", fake_wait)
@@ -79,7 +85,7 @@ def test_process_manager_starts_overlay_agent_then_kiln(monkeypatch: pytest.Monk
     manager.stop_all()
 
     assert [call[0][0] for call in launched] == ["forge-overlay", "obsidian-agent", "kiln"]
-    assert waited == [f"{cfg.overlay_url}/ops/events", f"{cfg.agent_url}/api/health"]
+    assert waited == [f"{cfg.overlay_url}/", f"{cfg.agent_url}/api/health"]
 
     kiln_cmd = launched[2][0]
     assert "--no-serve" in kiln_cmd
