@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "text",
+      "text": "Forge v2 Demo",
+      "x": 120,
+      "y": 120,
+      "width": 220,
+      "height": 80
+    },
+    {
+      "id": "n2",
+      "type": "text",
+      "text": "Validate first",
+      "x": 420,
+      "y": 120,
+      "width": 220,
+      "height": 80
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "fromNode": "n1",
+      "toNode": "n2"
+    }
+  ]
+}

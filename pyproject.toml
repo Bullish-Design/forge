@@ -54,6 +54,9 @@ include = [
 [tool.pytest.ini_options]
 addopts = "-q --cov=forge_cli --cov-report=term-missing"
 testpaths = ["tests"]
+markers = [
+  "integration: tests that run multi-process demo harness validation",
+]
 
 [tool.mypy]
 python_version = "3.13"
