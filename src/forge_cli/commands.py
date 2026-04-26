@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import signal
 import subprocess
 import time
 
@@ -23,7 +24,12 @@ def dev(
     """Run overlay, agent, and kiln in coordinated dev mode."""
     cfg = ForgeConfig.load(config)
     manager = ProcessManager()
+    previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
+    def _handle_sigterm(_signum: int, _frame: object) -> None:
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
     try:
         overlay = manager.start_overlay(cfg)
         agent = manager.start_agent(cfg)
@@ -44,9 +50,12 @@ def dev(
     except (ProcessLaunchError, TimeoutError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
+    except SystemExit:
+        typer.echo("shutting down forge dev (SIGTERM)")
     except KeyboardInterrupt:
         typer.echo("shutting down forge dev")
     finally:
+        signal.signal(signal.SIGTERM, previous_sigterm_handler)
         manager.stop_all()
 
 

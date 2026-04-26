@@ -262,3 +262,4 @@ class ProcessManager:
 def _stream_prefixed_logs(name: str, stream: TextIO) -> None:
     for line in stream:
         sys.stdout.write(f"[{name}] {line}")
+        sys.stdout.flush()

@@ -169,6 +169,42 @@ def test_dev_starts_processes_in_order(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert "startup-order: overlay -> agent -> kiln" in result.stdout
 
 
+def test_dev_handles_system_exit_and_stops_processes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    cfg = ForgeConfig(vault_dir=tmp_path / "vault", output_dir=tmp_path / "public", overlay_dir=tmp_path / "overlay")
+    calls: list[str] = []
+
+    class _FakeManager:
+        def start_overlay(self, _config: ForgeConfig):
+            calls.append("overlay")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def start_agent(self, _config: ForgeConfig):
+            calls.append("agent")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def bootstrap_sync(self, _config: ForgeConfig):
+            calls.append("bootstrap")
+
+        def start_kiln(self, _config: ForgeConfig):
+            calls.append("kiln")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def stop_all(self, timeout_s: float = 5.0):
+            _ = timeout_s
+            calls.append("stop")
+
+    monkeypatch.setattr("forge_cli.commands.ProcessManager", _FakeManager)
+    monkeypatch.setattr("forge_cli.commands.ForgeConfig.load", lambda _path: cfg)
+    monkeypatch.setattr("forge_cli.commands._wait_for_processes", lambda _processes: (_ for _ in ()).throw(SystemExit(0)))
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["dev", "--config", "forge.yaml"])
+
+    assert result.exit_code == 0
+    assert calls == ["overlay", "agent", "bootstrap", "kiln", "stop"]
+    assert "shutting down forge dev (SIGTERM)" in result.stdout
+
+
 def test_dev_continues_when_bootstrap_sync_http_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     cfg = ForgeConfig(vault_dir=tmp_path / "vault", output_dir=tmp_path / "public", overlay_dir=tmp_path / "overlay")
     calls: list[str] = []
