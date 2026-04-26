@@ -1,5 +1,18 @@
 vault_dir: ./vault
 output_dir: ./public
 overlay_dir: ./static
+host: 127.0.0.1
 port: 8080
-agent_port: 8081
+
+agent:
+  host: 127.0.0.1
+  port: 8081
+  vault_dir: ./vault
+  llm_model: anthropic:claude-sonnet-4-20250514
+
+kiln:
+  bin: kiln
+  theme: default
+  font: inter
+  lang: en
+  site_name: My Notes
