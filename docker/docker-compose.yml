@@ -1,0 +1,75 @@
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    container_name: forge-tailscale
+    hostname: ${TS_HOSTNAME:-forge}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:-}
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    ports:
+      - "${FORGE_PORT:-8080}:${FORGE_INTERNAL_PORT:-8080}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "tailscale", "status", "--json"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+
+  forge:
+    build:
+      context: ..
+      dockerfile: docker/forge.Dockerfile
+      args:
+        FORGE_OVERLAY_REF: ${FORGE_OVERLAY_REF:-main}
+        OBSIDIAN_AGENT_REF: ${OBSIDIAN_AGENT_REF:-main}
+        OBSIDIAN_OPS_REF: ${OBSIDIAN_OPS_REF:-main}
+    image: forge:local
+    pull_policy: never
+    container_name: forge-app
+    depends_on:
+      tailscale:
+        condition: service_started
+    network_mode: service:tailscale
+    environment:
+      FORGE_CONFIG_PATH: /app/forge.yaml
+      FORGE_VAULT_DIR: /data/vault
+      FORGE_OUTPUT_DIR: /data/public
+      FORGE_OVERLAY_DIR: /app/static
+      FORGE_HOST: ${FORGE_HOST:-0.0.0.0}
+      FORGE_PORT: ${FORGE_INTERNAL_PORT:-8080}
+      FORGE_AGENT_HOST: 127.0.0.1
+      FORGE_AGENT_PORT: 8081
+      FORGE_KILN_BIN: /usr/local/bin/kiln
+      FORGE_AGENT_LLM_MODEL: ${AGENT_LLM_MODEL:-openai:auto}
+      FORGE_SYNC_REMOTE_URL: ${FORGE_SYNC_REMOTE_URL:-}
+      FORGE_SYNC_REMOTE_TOKEN: ${FORGE_SYNC_REMOTE_TOKEN:-}
+      FORGE_SYNC_AFTER_COMMIT: ${FORGE_SYNC_AFTER_COMMIT:-true}
+      FORGE_SYNC_REMOTE: ${FORGE_SYNC_REMOTE:-origin}
+
+      AGENT_LLM_BASE_URL: ${AGENT_LLM_BASE_URL:-http://remora-server:8000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-EMPTY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - forge-vault:/data/vault
+      - ../static:/app/static:ro
+      - ${KILN_BIN_HOST_PATH:-/usr/local/bin/kiln}:/usr/local/bin/kiln:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/"]
+      start_period: 120s
+      interval: 20s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  forge-vault:
+    name: forge-vault
+  tailscale-state:
