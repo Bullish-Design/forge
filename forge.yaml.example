@@ -16,3 +16,9 @@ kiln:
   font: inter
   lang: en
   site_name: My Notes
+
+sync:
+  after_commit: false
+  remote: origin
+  # remote_url: https://github.com/your-org/your-vault.git
+  # remote_token: ghp_...

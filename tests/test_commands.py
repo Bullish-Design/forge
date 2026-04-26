@@ -96,6 +96,12 @@ def test_process_manager_starts_overlay_agent_then_kiln(monkeypatch: pytest.Monk
     assert agent_env is not None
     assert agent_env["AGENT_VAULT_DIR"] == str(cfg.vault_dir)
     assert agent_env["AGENT_SITE_BASE_URL"] == cfg.overlay_url
+    assert agent_env["AGENT_SYNC_AFTER_COMMIT"] == "false"
+    assert agent_env["AGENT_SYNC_REMOTE"] == "origin"
+    assert "AGENT_SYNC_REMOTE_URL" not in agent_env
+    assert "AGENT_SYNC_REMOTE_TOKEN" not in agent_env
+    assert "FORGE_SYNC_REMOTE_URL" not in agent_env
+    assert "FORGE_SYNC_REMOTE_TOKEN" not in agent_env
 
 
 def test_wait_for_http_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -240,6 +246,8 @@ def test_init_scaffolds_directories_and_config(monkeypatch: pytest.MonkeyPatch, 
     assert parsed["vault_dir"] == str(vault_dir)
     assert parsed["output_dir"] == str(output_dir)
     assert parsed["overlay_dir"] == str(overlay_dir)
+    assert parsed["sync"]["after_commit"] is False
+    assert parsed["sync"]["remote"] == "origin"
 
 
 def test_init_requires_force_when_config_exists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

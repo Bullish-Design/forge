@@ -145,5 +145,9 @@ def _render_default_config(cfg: ForgeConfig) -> str:
             "lang": cfg.kiln_lang,
             "site_name": cfg.kiln_site_name,
         },
+        "sync": {
+            "after_commit": cfg.sync_after_commit,
+            "remote": cfg.sync_remote,
+        },
     }
     return yaml.safe_dump(payload, sort_keys=False)

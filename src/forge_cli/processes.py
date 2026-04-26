@@ -132,6 +132,15 @@ class ProcessManager:
         return process
 
     def start_agent(self, config: ForgeConfig) -> ManagedProcess:
+        passthrough_keys = (
+            "AGENT_LLM_BASE_URL",
+            "AGENT_LLM_API_KEY",
+            "AGENT_LLM_TIMEOUT_S",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+        )
+        passthrough_env = {key: value for key, value in os.environ.items() if key in passthrough_keys}
+
         process = self.start(
             "agent",
             ["obsidian-agent"],
@@ -141,6 +150,9 @@ class ProcessManager:
                 "AGENT_HOST": config.agent_host,
                 "AGENT_PORT": str(config.agent_port),
                 "AGENT_SITE_BASE_URL": config.overlay_url,
+                "AGENT_SYNC_AFTER_COMMIT": str(config.sync_after_commit).lower(),
+                "AGENT_SYNC_REMOTE": config.sync_remote,
+                **passthrough_env,
             },
         )
         wait_for_http(f"{config.agent_url}/api/health")

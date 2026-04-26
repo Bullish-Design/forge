@@ -27,6 +27,10 @@ class ForgeConfig(BaseSettings):
     agent_port: int = Field(default=8081, ge=1, le=65535)
     agent_vault_dir: Path | None = None
     agent_llm_model: str = "anthropic:claude-sonnet-4-20250514"
+    sync_after_commit: bool = False
+    sync_remote: str = "origin"
+    sync_remote_url: str | None = None
+    sync_remote_token: str | None = None
 
     kiln_bin: str = "kiln"
     kiln_theme: str = "default"
@@ -124,5 +128,17 @@ def _load_yaml_config(path: Path) -> dict[str, Any]:
             data["kiln_lang"] = kiln["lang"]
         if "site_name" in kiln:
             data["kiln_site_name"] = kiln["site_name"]
+
+    # Nested sync block
+    sync = raw.get("sync")
+    if isinstance(sync, Mapping):
+        if "after_commit" in sync:
+            data["sync_after_commit"] = sync["after_commit"]
+        if "remote" in sync:
+            data["sync_remote"] = sync["remote"]
+        if "remote_url" in sync:
+            data["sync_remote_url"] = sync["remote_url"]
+        if "remote_token" in sync:
+            data["sync_remote_token"] = sync["remote_token"]
 
     return data
