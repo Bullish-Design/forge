@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import time
 
+import httpx
 import typer
 import yaml
 
@@ -26,6 +27,12 @@ def dev(
     try:
         overlay = manager.start_overlay(cfg)
         agent = manager.start_agent(cfg)
+        try:
+            manager.bootstrap_sync(cfg)
+        except ProcessLaunchError as exc:
+            typer.echo(f"sync bootstrap failed: {exc}", err=True)
+        except httpx.HTTPError as exc:
+            typer.echo(f"sync bootstrap error: {exc}", err=True)
         kiln = manager.start_kiln(cfg)
 
         typer.echo("forge dev running")

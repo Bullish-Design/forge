@@ -182,6 +182,62 @@ class ProcessManager:
             ],
         )
 
+    def bootstrap_sync(self, config: ForgeConfig) -> None:
+        """Bootstrap VCS sync state via agent API after startup."""
+        if not config.sync_remote_url:
+            return
+
+        ensure_resp = httpx.post(f"{config.agent_url}/api/vault/vcs/sync/ensure", timeout=30.0)
+        ensure_resp.raise_for_status()
+        ensure_payload = ensure_resp.json()
+        status = ensure_payload.get("status")
+
+        if status == "error":
+            detail = ensure_payload.get("detail", "unknown error")
+            raise ProcessLaunchError(f"Sync bootstrap failed: {detail}")
+
+        if status == "migration_needed":
+            print(
+                f"[forge] WARNING: vault sync migration needed: {ensure_payload.get('detail')}",
+                file=sys.stderr,
+            )
+            return
+
+        remote_payload: dict[str, str] = {
+            "url": config.sync_remote_url,
+            "remote": config.sync_remote,
+        }
+        if config.sync_remote_token:
+            remote_payload["token"] = config.sync_remote_token
+
+        remote_resp = httpx.put(
+            f"{config.agent_url}/api/vault/vcs/sync/remote",
+            json=remote_payload,
+            timeout=30.0,
+        )
+        remote_resp.raise_for_status()
+
+        sync_resp = httpx.post(
+            f"{config.agent_url}/api/vault/vcs/sync",
+            json={"remote": config.sync_remote},
+            timeout=120.0,
+        )
+        sync_resp.raise_for_status()
+        sync_payload = sync_resp.json()
+
+        if not sync_payload.get("sync_ok", False):
+            if sync_payload.get("conflict"):
+                bookmark = sync_payload.get("conflict_bookmark", "?")
+                print(
+                    f"[forge] WARNING: initial sync conflict, bookmark: {bookmark}",
+                    file=sys.stderr,
+                )
+            elif sync_payload.get("error"):
+                print(
+                    f"[forge] WARNING: initial sync error: {sync_payload['error']}",
+                    file=sys.stderr,
+                )
+
     def stop_all(self, timeout_s: float = 5.0) -> None:
         for managed in reversed(self._processes):
             process = managed.process

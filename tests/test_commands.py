@@ -150,6 +150,9 @@ def test_dev_starts_processes_in_order(monkeypatch: pytest.MonkeyPatch, tmp_path
             calls.append("kiln")
             return type("M", (), {"process": _DummyProcess()})()
 
+        def bootstrap_sync(self, _config: ForgeConfig):
+            calls.append("bootstrap")
+
         def stop_all(self, timeout_s: float = 5.0):
             _ = timeout_s
             calls.append("stop")
@@ -162,8 +165,86 @@ def test_dev_starts_processes_in_order(monkeypatch: pytest.MonkeyPatch, tmp_path
     result = runner.invoke(app, ["dev", "--config", "forge.yaml"])
 
     assert result.exit_code == 0
-    assert calls == ["overlay", "agent", "kiln", "stop"]
+    assert calls == ["overlay", "agent", "bootstrap", "kiln", "stop"]
     assert "startup-order: overlay -> agent -> kiln" in result.stdout
+
+
+def test_dev_continues_when_bootstrap_sync_http_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    cfg = ForgeConfig(vault_dir=tmp_path / "vault", output_dir=tmp_path / "public", overlay_dir=tmp_path / "overlay")
+    calls: list[str] = []
+
+    class _FakeManager:
+        def start_overlay(self, _config: ForgeConfig):
+            calls.append("overlay")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def start_agent(self, _config: ForgeConfig):
+            calls.append("agent")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def bootstrap_sync(self, _config: ForgeConfig):
+            calls.append("bootstrap")
+            raise RuntimeError("boom")
+
+        def start_kiln(self, _config: ForgeConfig):
+            calls.append("kiln")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def stop_all(self, timeout_s: float = 5.0):
+            _ = timeout_s
+            calls.append("stop")
+
+    monkeypatch.setattr("forge_cli.commands.ProcessManager", _FakeManager)
+    monkeypatch.setattr("forge_cli.commands.ForgeConfig.load", lambda _path: cfg)
+    monkeypatch.setattr("forge_cli.commands._wait_for_processes", lambda _processes: None)
+    monkeypatch.setattr("forge_cli.commands.httpx.HTTPError", RuntimeError)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["dev", "--config", "forge.yaml"])
+
+    assert result.exit_code == 0
+    assert calls == ["overlay", "agent", "bootstrap", "kiln", "stop"]
+    assert "sync bootstrap error: boom" in result.stderr
+
+
+def test_dev_continues_when_bootstrap_sync_process_launch_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    cfg = ForgeConfig(vault_dir=tmp_path / "vault", output_dir=tmp_path / "public", overlay_dir=tmp_path / "overlay")
+    calls: list[str] = []
+
+    class _FakeManager:
+        def start_overlay(self, _config: ForgeConfig):
+            calls.append("overlay")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def start_agent(self, _config: ForgeConfig):
+            calls.append("agent")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def bootstrap_sync(self, _config: ForgeConfig):
+            calls.append("bootstrap")
+            raise RuntimeError("fatal-sync")
+
+        def start_kiln(self, _config: ForgeConfig):
+            calls.append("kiln")
+            return type("M", (), {"process": _DummyProcess()})()
+
+        def stop_all(self, timeout_s: float = 5.0):
+            _ = timeout_s
+            calls.append("stop")
+
+    monkeypatch.setattr("forge_cli.commands.ProcessManager", _FakeManager)
+    monkeypatch.setattr("forge_cli.commands.ForgeConfig.load", lambda _path: cfg)
+    monkeypatch.setattr("forge_cli.commands._wait_for_processes", lambda _processes: None)
+    monkeypatch.setattr("forge_cli.commands.ProcessLaunchError", RuntimeError)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["dev", "--config", "forge.yaml"])
+
+    assert result.exit_code == 0
+    assert calls == ["overlay", "agent", "bootstrap", "kiln", "stop"]
+    assert "sync bootstrap failed: fatal-sync" in result.stderr
 
 
 def test_serve_starts_only_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
