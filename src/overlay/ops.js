@@ -6,6 +6,9 @@
   const MAX_LOGS = 50;
   let logIdCounter = 0;
   let unseenCount = 0;
+  // Track which log entries are expanded
+  const expandedLogIds = new Set();
+  let logsExpanded = false;
   const badgeEl = () => document.querySelector("#forge-trigger .forge-badge");
 
   function addLog(entry) {
@@ -20,7 +23,50 @@
   }
 
   function renderLogs() {
-    // placeholder — will be implemented in Step 7
+    const listEl = document.getElementById("forge-logs-list");
+    const countEl = document.getElementById("forge-logs-count");
+    if (!listEl || !countEl) return;
+
+    countEl.textContent = String(logs.length);
+
+    listEl.innerHTML = logs
+      .map((entry) => {
+        const isExpanded = expandedLogIds.has(entry.id);
+        const statusClass = entry.status >= 400 || entry.error ? "error" : "";
+        const statusText = entry.error ? "ERR" : String(entry.status);
+        const duration = entry.duration_ms > 0 ? (entry.duration_ms / 1000).toFixed(1) + "s" : "...";
+        const shortUrl = entry.url.replace(/^\/api\//, "");
+
+        let detailHtml = "";
+        if (entry.request != null) {
+          const reqStr = typeof entry.request === "string" ? entry.request : JSON.stringify(entry.request, null, 2);
+          detailHtml += `<div class="forge-log-detail-label">Request</div><pre>${escapeHtml(reqStr)}</pre>`;
+        }
+        if (entry.response != null) {
+          const resStr = typeof entry.response === "string" ? entry.response : JSON.stringify(entry.response, null, 2);
+          detailHtml += `<div class="forge-log-detail-label">Response</div><pre>${escapeHtml(resStr)}</pre>`;
+        }
+        if (entry.error) {
+          detailHtml += `<div class="forge-log-detail-label">Error</div><pre>${escapeHtml(entry.error)}</pre>`;
+        }
+
+        return `
+        <div class="forge-log-entry" data-log-id="${entry.id}">
+          <div class="forge-log-summary">
+            <span class="forge-log-method">${entry.method}</span>
+            <span class="forge-log-url">${escapeHtml(shortUrl)}</span>
+            <span class="forge-log-status ${statusClass}">${statusText}</span>
+            <span class="forge-log-duration">${duration}</span>
+          </div>
+          <div class="forge-log-detail ${isExpanded ? "open" : ""}">${detailHtml}</div>
+        </div>
+      `;
+      })
+      .join("");
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   // ── Fetch Intercept ─────────────────────────────────
@@ -113,6 +159,14 @@
         </div>
 
         <div class="forge-section" style="margin-top:12px;">
+          <button class="forge-logs-header" id="forge-logs-toggle">
+            <span class="forge-caret" id="forge-logs-caret">\u25B8</span>
+            <span>Logs (<span id="forge-logs-count">0</span>)</span>
+          </button>
+          <div class="forge-logs-list" id="forge-logs-list"></div>
+        </div>
+
+        <div class="forge-section">
           <pre id="forge-output" class="forge-output">Waiting for interaction...</pre>
         </div>
       </div>
@@ -123,6 +177,29 @@
     </div>
   `;
   document.body.appendChild(backdrop);
+
+  // ── Log Viewer Toggle ───────────────────────────────
+  document.getElementById("forge-logs-toggle").addEventListener("click", () => {
+    logsExpanded = !logsExpanded;
+    document.getElementById("forge-logs-list").classList.toggle("open", logsExpanded);
+    document.getElementById("forge-logs-caret").classList.toggle("open", logsExpanded);
+  });
+
+  // ── Log Entry Expand/Collapse (event delegation) ───
+  document.getElementById("forge-logs-list").addEventListener("click", (e) => {
+    const entry = e.target.closest(".forge-log-entry");
+    if (!entry) return;
+    const logId = Number(entry.dataset.logId);
+    const detail = entry.querySelector(".forge-log-detail");
+    if (!detail) return;
+    if (expandedLogIds.has(logId)) {
+      expandedLogIds.delete(logId);
+      detail.classList.remove("open");
+    } else {
+      expandedLogIds.add(logId);
+      detail.classList.add("open");
+    }
+  });
 
   // ── Current File Detection ──────────────────────────
   function detectCurrentFile() {

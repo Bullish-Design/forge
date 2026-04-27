@@ -290,3 +290,126 @@
 #forge-modal .forge-footer button:hover {
   border-color: #60a5fa;
 }
+
+/* ── Log Viewer ───────────────────────────────────── */
+#forge-modal .forge-logs-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 6px 0;
+  font-size: 12px;
+  color: #94a3b8;
+  user-select: none;
+  margin-top: 4px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  width: 100%;
+  text-align: left;
+}
+
+#forge-modal .forge-logs-header:hover {
+  color: #e2e8f0;
+}
+
+#forge-modal .forge-logs-header .forge-caret {
+  transition: transform 0.15s;
+  display: inline-block;
+}
+
+#forge-modal .forge-logs-header .forge-caret.open {
+  transform: rotate(90deg);
+}
+
+#forge-modal .forge-logs-list {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+#forge-modal .forge-logs-list.open {
+  display: flex;
+}
+
+#forge-modal .forge-log-entry {
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  background: #020617;
+  font-size: 11px;
+}
+
+#forge-modal .forge-log-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+#forge-modal .forge-log-summary:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+#forge-modal .forge-log-method {
+  font-weight: 700;
+  color: #60a5fa;
+}
+
+#forge-modal .forge-log-url {
+  flex: 1;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#forge-modal .forge-log-status {
+  color: #10b981;
+}
+
+#forge-modal .forge-log-status.error {
+  color: #ef4444;
+}
+
+#forge-modal .forge-log-duration {
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+#forge-modal .forge-log-detail {
+  display: none;
+  padding: 0 8px 8px;
+  border-top: 1px solid #1e293b;
+}
+
+#forge-modal .forge-log-detail.open {
+  display: block;
+}
+
+#forge-modal .forge-log-detail-label {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 6px;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+#forge-modal .forge-log-detail pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  background: #0f172a;
+  border-radius: 4px;
+  padding: 6px;
+  font: inherit;
+  font-size: 10px;
+  color: #cbd5e1;
+  max-height: 150px;
+  overflow: auto;
+}
