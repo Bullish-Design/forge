@@ -54,6 +54,10 @@ def demo_run_free_explore() -> int:
     return _run("run_free_explore.py")
 
 
+def demo_run_production_ui() -> int:
+    return _run("run_demo_production_ui.py")
+
+
 def docker_up() -> int:
     return _run_path(_repo_root() / "docker" / "up.py")
 

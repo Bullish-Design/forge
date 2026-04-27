@@ -17,6 +17,7 @@ DEMO_DIR = SCRIPT_DIR.parent
 RUNTIME_DIR = Path(os.environ.get("DEMO_RUNTIME_DIR", str(DEMO_DIR / "runtime")))
 VAULT_TEMPLATE_DIR = DEMO_DIR / "vault-template"
 OVERLAY_TEMPLATE_DIR = DEMO_DIR / "overlay"
+OVERLAY_TEMPLATE_DIR = Path(os.environ.get("DEMO_OVERLAY_TEMPLATE_DIR", str(OVERLAY_TEMPLATE_DIR)))
 
 VAULT_DIR = RUNTIME_DIR / "vault"
 PUBLIC_DIR = RUNTIME_DIR / "public"
