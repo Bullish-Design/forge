@@ -132,21 +132,6 @@
   color: #94a3b8;
 }
 
-/* ── Mobile (<640px): bottom sheet ─────────────────── */
-@media (max-width: 639px) {
-  #forge-backdrop.open {
-    align-items: flex-end;
-  }
-
-  #forge-modal {
-    width: 100%;
-    max-width: 100%;
-    max-height: 85vh;
-    border-radius: 12px 12px 0 0;
-    border-bottom: none;
-  }
-}
-
 /* ── Modal body sections ──────────────────────────── */
 #forge-modal .forge-section {
   margin-bottom: 12px;
@@ -412,4 +397,19 @@
   color: #cbd5e1;
   max-height: 150px;
   overflow: auto;
+}
+
+/* ── Mobile (<640px): bottom sheet ─────────────────── */
+@media (max-width: 639px) {
+  #forge-backdrop.open {
+    align-items: flex-end;
+  }
+
+  #forge-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 85vh;
+    border-radius: 12px 12px 0 0;
+    border-bottom: none;
+  }
 }
