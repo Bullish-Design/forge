@@ -1,6 +1,83 @@
 (() => {
   // ── State ───────────────────────────────────────────
   let modalOpen = localStorage.getItem("forge-modal-open") === "true";
+  // ── Log State ───────────────────────────────────────
+  const logs = [];
+  const MAX_LOGS = 50;
+  let logIdCounter = 0;
+  let unseenCount = 0;
+  const badgeEl = () => document.querySelector("#forge-trigger .forge-badge");
+
+  function addLog(entry) {
+    logs.unshift(entry); // newest first
+    if (logs.length > MAX_LOGS) logs.pop();
+    if (!modalOpen) {
+      unseenCount++;
+      const b = badgeEl();
+      if (b) b.textContent = String(unseenCount);
+    }
+    renderLogs();
+  }
+
+  function renderLogs() {
+    // placeholder — will be implemented in Step 7
+  }
+
+  // ── Fetch Intercept ─────────────────────────────────
+  const originalFetch = window.fetch;
+  window.fetch = async function (...args) {
+    const [resource, options] = args;
+    const url = typeof resource === "string" ? resource : resource.url;
+
+    if (!url.includes("/api/")) {
+      return originalFetch.apply(this, args);
+    }
+
+    const entry = {
+      id: ++logIdCounter,
+      timestamp: Date.now(),
+      method: (options && options.method) || "GET",
+      url: url,
+      request: null,
+      response: null,
+      duration_ms: 0,
+      status: 0,
+      error: null,
+    };
+
+    if (options && options.body) {
+      try {
+        entry.request = JSON.parse(options.body);
+      } catch {
+        entry.request = options.body;
+      }
+    }
+
+    const start = performance.now();
+    try {
+      const response = await originalFetch.apply(this, args);
+      entry.duration_ms = Math.round(performance.now() - start);
+      entry.status = response.status;
+
+      const clone = response.clone();
+      clone.text().then((text) => {
+        try {
+          entry.response = JSON.parse(text);
+        } catch {
+          entry.response = text;
+        }
+        renderLogs();
+      });
+
+      addLog(entry);
+      return response;
+    } catch (err) {
+      entry.duration_ms = Math.round(performance.now() - start);
+      entry.error = err.message;
+      addLog(entry);
+      throw err;
+    }
+  };
 
   // ── Trigger Button ──────────────────────────────────
   const trigger = document.createElement("button");
@@ -149,6 +226,9 @@
     localStorage.setItem("forge-modal-open", "true");
     backdrop.classList.add("open");
     trigger.style.display = "none";
+    unseenCount = 0;
+    const b = badgeEl();
+    if (b) b.textContent = "";
   }
 
   function closeModal() {
