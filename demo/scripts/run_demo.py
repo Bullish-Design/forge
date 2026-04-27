@@ -16,6 +16,7 @@ import time
 import tty
 import termios
 from urllib import error as urlerror
+from urllib import parse as urlparse
 from urllib import request
 
 
@@ -141,6 +142,30 @@ def http_put_json(url: str, payload: dict[str, object]) -> bytes:
         return response.read()
 
 
+def vault_append_token(api_base: str, path: str, token: str) -> dict[str, object]:
+    payload = json.loads(http_get(f"{api_base}/vault/files?path={urlparse.quote(path)}").decode("utf-8"))
+    content = str(payload.get("content", ""))
+    sha = str(payload.get("sha256", ""))
+    updated = content.rstrip("\n") + f"\n\n{token}\n"
+    return json.loads(
+        http_put_json(
+            f"{api_base}/vault/files",
+            {"path": path, "content": updated, "expected_sha256": sha},
+        ).decode("utf-8")
+    )
+
+
+def vault_restore_content(api_base: str, path: str, original_content: str) -> dict[str, object]:
+    payload = json.loads(http_get(f"{api_base}/vault/files?path={urlparse.quote(path)}").decode("utf-8"))
+    sha = str(payload.get("sha256", ""))
+    return json.loads(
+        http_put_json(
+            f"{api_base}/vault/files",
+            {"path": path, "content": original_content, "expected_sha256": sha},
+        ).decode("utf-8")
+    )
+
+
 def wait_until(predicate, timeout_s: float, interval_s: float = 0.25) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -148,6 +173,11 @@ def wait_until(predicate, timeout_s: float, interval_s: float = 0.25) -> bool:
             return True
         time.sleep(interval_s)
     return False
+
+
+def wait_for_initial_build(log_path: Path, timeout_s: float = 90.0) -> None:
+    if not wait_until(lambda: "Build complete seconds=" in read_text(log_path), timeout_s=timeout_s):
+        raise fail("initial kiln build did not complete in time")
 
 
 def count_pattern(path: Path, pattern: str) -> int:
@@ -162,6 +192,20 @@ def count_substring(path: Path, needle: str) -> int:
         return 0
     text = path.read_text(encoding="utf-8", errors="ignore")
     return text.count(needle)
+
+
+def read_text(path: Path) -> str:
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8", errors="ignore")
+
+
+def rendered_html_path(markdown_relpath: str) -> Path:
+    stem = Path(markdown_relpath).with_suffix("")
+    flat_candidate = PUBLIC_DIR / stem.parent / f"{stem.name}.html"
+    if flat_candidate.exists():
+        return flat_candidate
+    return PUBLIC_DIR / stem.parent / stem.name / "index.html"
 
 
 def show_site_urls() -> None:
@@ -205,7 +249,7 @@ def run_walkthrough() -> None:
     print("\nTalking points:")
     print(" - kiln-fork is running watch mode with --no-serve and --on-rebuild.")
     print(" - forge-overlay serves generated output and injects demo overlay assets.")
-    print(" - dummy API provides deterministic apply/undo responses.")
+    print(" - real obsidian-agent is running behind overlay through forge dev.")
     pause_step("Open the URLs and inspect baseline behavior, then press any key...")
 
     step_header("2", "Show Kiln Rendering Capabilities")
@@ -218,20 +262,20 @@ def run_walkthrough() -> None:
 
     step_header("3", "Trigger A Real Incremental Rebuild")
     token = f"walkthrough-mutation-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}"
-    kiln_log = LOG_DIR / "kiln.log"
-    overlay_log = LOG_DIR / "forge-overlay.log"
+    orchestrator_log = LOG_DIR / "forge.log"
     live_reload_md = VAULT_DIR / "experiments" / "live-reload.md"
-    target_html = PUBLIC_DIR / "experiments" / "live-reload.html"
+    target_html = rendered_html_path("experiments/live-reload.md")
 
-    kiln_before = count_pattern(kiln_log, r"rebuilding after file change")
-    overlay_before = count_pattern(overlay_log, r"POST /internal/rebuild")
+    kiln_before = count_pattern(orchestrator_log, r"\[kiln\].*rebuilding after file change")
+    overlay_before = count_pattern(orchestrator_log, r"\[overlay\].*POST /internal/rebuild")
+    wait_for_initial_build(orchestrator_log)
     live_reload_md.parent.mkdir(parents=True, exist_ok=True)
     with live_reload_md.open("a", encoding="utf-8") as handle:
         handle.write(f"\n\nWalkthrough mutation token: {token}\n")
 
     def rebuild_done() -> bool:
-        kiln_after = count_pattern(kiln_log, r"rebuilding after file change")
-        overlay_after = count_pattern(overlay_log, r"POST /internal/rebuild")
+        kiln_after = count_pattern(orchestrator_log, r"\[kiln\].*rebuilding after file change")
+        overlay_after = count_pattern(orchestrator_log, r"\[overlay\].*POST /internal/rebuild")
         html_has_token = target_html.exists() and token in target_html.read_text(encoding="utf-8", errors="ignore")
         return kiln_after > kiln_before and overlay_after > overlay_before and html_has_token
 
@@ -277,36 +321,56 @@ def run_walkthrough() -> None:
 
     step_header("6", "Run Deterministic Apply Through Overlay")
     apply_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api/agent/apply"
-    note_html = PUBLIC_DIR / "projects" / "forge-v2.html"
-    marker = "Dummy LLM Update"
-    baseline_marker_count = count_substring(note_html, marker)
-    apply_payload = json.loads(
-        http_post_json(
-            apply_url,
-            {
-                "instruction": "Add deterministic release-note line",
-                "current_file": "projects/forge-v2.md",
-            },
-        ).decode("utf-8")
-    )
+    api_base = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api"
+    note_html = rendered_html_path("projects/forge-v2.md")
+    apply_token = f"WALKTHROUGH_APPLY_{int(time.time())}"
+    baseline_marker_count = count_substring(note_html, apply_token)
+    apply_via = "agent"
+    fallback_original_content: str | None = None
+    try:
+        apply_payload = json.loads(
+            http_post_json(
+                apply_url,
+                {
+                    "instruction": f"Append exactly this line at end of file: {apply_token}",
+                    "current_file": "projects/forge-v2.md",
+                },
+            ).decode("utf-8")
+        )
+        if not apply_payload.get("ok"):
+            raise RuntimeError(f"agent apply returned not ok: {apply_payload}")
+    except (urlerror.HTTPError, RuntimeError):
+        apply_via = "vault"
+        fallback_original_content = str(
+            json.loads(http_get(f"{api_base}/vault/files?path={urlparse.quote('projects/forge-v2.md')}").decode("utf-8")).get(
+                "content", ""
+            )
+        )
+        apply_payload = vault_append_token(api_base, "projects/forge-v2.md", apply_token)
     print("Apply response:")
     print(json.dumps(apply_payload, indent=2, sort_keys=True))
     if not apply_payload.get("ok"):
         raise fail(f"apply request failed: {apply_payload}")
+    if apply_via == "vault":
+        print("Agent apply unavailable; used deterministic vault-route fallback.")
 
     print("Waiting for rendered apply update...")
     if not wait_until(
-        lambda: note_html.exists() and count_substring(note_html, marker) > baseline_marker_count,
+        lambda: note_html.exists() and count_substring(note_html, apply_token) > baseline_marker_count,
         timeout_s=45,
     ):
         raise fail("apply marker not observed in rendered note")
 
-    print("Apply completed. Refresh /projects/forge-v2 to see Dummy LLM Update.")
+    print(f"Apply completed. Refresh /projects/forge-v2 to see token: {apply_token}")
     pause_step("After confirming apply output in browser, press any key...")
 
     step_header("7", "Run Undo Through Overlay")
     undo_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api/agent/undo"
-    undo_payload = json.loads(http_post_json(undo_url, {}).decode("utf-8"))
+    undo_payload = (
+        json.loads(http_post_json(undo_url, {}).decode("utf-8"))
+        if apply_via == "agent"
+        else vault_restore_content(api_base, "projects/forge-v2.md", fallback_original_content or "")
+    )
     print("Undo response:")
     print(json.dumps(undo_payload, indent=2, sort_keys=True))
     if not undo_payload.get("ok"):
@@ -314,7 +378,7 @@ def run_walkthrough() -> None:
 
     print("Waiting for rendered undo update...")
     if not wait_until(
-        lambda: note_html.exists() and count_substring(note_html, marker) == baseline_marker_count,
+        lambda: note_html.exists() and count_substring(note_html, apply_token) == baseline_marker_count,
         timeout_s=45,
     ):
         raise fail("undo marker removal not observed in rendered note")
@@ -323,8 +387,8 @@ def run_walkthrough() -> None:
     pause_step("After confirming undo output in browser, press any key...")
 
     step_header("8", "Wrap-Up")
-    kiln_rebuilds = count_pattern(kiln_log, r"rebuilding after file change")
-    overlay_hooks = count_pattern(overlay_log, r'POST /internal/rebuild HTTP/1.1" 204')
+    kiln_rebuilds = count_pattern(orchestrator_log, r"\[kiln\].*rebuilding after file change")
+    overlay_hooks = count_pattern(orchestrator_log, r'\[overlay\].*POST /internal/rebuild HTTP/1.1" 204')
     print("Final checks:")
     print(f" - kiln incremental rebuilds observed: {kiln_rebuilds}")
     print(f" - overlay rebuild webhooks observed (204): {overlay_hooks}")

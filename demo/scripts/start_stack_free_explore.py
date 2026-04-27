@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-from lib import cleanup_runtime
+from start_stack import main
 
 
 if __name__ == "__main__":
-    raise SystemExit(cleanup_runtime())
+    raise SystemExit(main())

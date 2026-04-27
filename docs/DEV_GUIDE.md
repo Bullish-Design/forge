@@ -370,15 +370,15 @@ cd /path/to/obsidian-agent && devenv shell -- uv run pytest -q
 
 ## Demo Harness
 
-The `demo/` directory provides a self-contained demonstration without requiring
-a real LLM. See `demo/README.md` for full usage.
+The `demo/` directory provides a Python-first demo harness that runs the real
+`forge dev` orchestrator path (`forge-overlay` + `obsidian-agent` + kiln).
+See `demo/README.md` for full usage.
 
 ### Architecture
 
-The demo replaces `obsidian-agent` with a lightweight Python HTTP server
-(`demo/tools/dummy_api_server.py`) that provides deterministic apply/undo
-behavior. A second backend (`demo/tools/vllm_api_server.py`) routes through
-a real vLLM endpoint for the free-explore variant.
+The default demo stack uses real `obsidian-agent` and real overlay/kiln
+processes. `demo/tools/dummy_api_server.py` is retained as an optional
+deterministic server for controlled/non-LLM test runs.
 
 The demo overlay (`demo/overlay/ops.js` + `ops.css`) provides an interactive
 panel injected into every page: SSE event counter, apply/undo/health buttons,
@@ -389,13 +389,13 @@ overlay, which only auto-reloads on rebuild events.
 
 | Script | Purpose |
 |--------|---------|
-| `setup.sh` | Copy vault-template and overlay to `runtime/` |
-| `start_stack.sh` | Boot dummy API, overlay, kiln with health gates |
-| `validate_full_stack.sh` | Automated 6-assertion integration test |
-| `run_demo.py` | Interactive 7-step walkthrough with keypress progression |
-| `run_free_explore.py` | vLLM-backed variant launcher |
-| `cleanup.sh` | Stop processes, remove runtime |
-| `common.sh` | Shared variables, port checks, wait helpers |
+| `setup.py` | Copy vault-template and overlay to `runtime/` |
+| `start_stack.py` | Boot real `forge dev` stack with health gates |
+| `validate_full_stack.py` | Automated full-stack integration validation |
+| `run_demo.py` | Interactive walkthrough with keypress progression |
+| `run_free_explore.py` | Real-LMM free-explore launcher |
+| `cleanup.py` | Stop orchestrator process and remove runtime |
+| `lib.py` | Shared runtime/config/process helpers |
 
 ### Demo Ports
 
@@ -411,10 +411,9 @@ overlay, which only auto-reloads on rebuild events.
 |----------|---------|-------------|
 | `DEMO_OVERLAY_PORT` | `18080` | Overlay bind port |
 | `DEMO_API_PORT` | `18081` | Backend API bind port |
-| `DEMO_VLLM_BASE_URL` | `http://remora-server:8000/v1` | vLLM upstream |
-| `DEMO_VLLM_MODEL` | (auto-detect) | vLLM model override |
+| `AGENT_LLM_BASE_URL` | `http://remora-server:8000/v1` | Agent model API upstream |
+| `AGENT_LLM_MODEL` | `openai:auto` | Agent model id |
 | `KILN_BIN` | kiln-fork binary if found | Kiln executable path |
-| `FORGE_OVERLAY_PROJECT_DIR` | `../forge-overlay` | Overlay project for `uv run` |
 | `FORGE_RUN_DEMO_VALIDATION` | `0` | Enable integration test in pytest |
 
 ---

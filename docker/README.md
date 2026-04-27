@@ -16,6 +16,7 @@ separate git-sync container.
 - `docker/entrypoint.py`
 - `docker/up.py`
 - `docker/down.py`
+- `docker/validate.py`
 - `docker/.env.example`
 
 ## Required Environment
@@ -58,5 +59,18 @@ Bootstrap warnings do not crash startup; Forge remains usable in local mode.
 cp docker/.env.example .env
 uv run docker/up.py
 curl -fsS http://127.0.0.1:${FORGE_PORT:-8080}/api/health
+uv run docker/validate.py
 uv run docker/down.py
 ```
+
+## Image Pinning
+
+The runtime image is pinned by build args from `.env`:
+
+- `FORGE_OVERLAY_REF=v0.2.1`
+- `OBSIDIAN_AGENT_REF=v0.3.1`
+- `OBSIDIAN_OPS_REF=v0.7.1`
+- `KILN_REF=v0.10.3`
+- `JJ_VERSION=0.35.0`
+
+`kiln` and `jj` are baked into the image, so no host binary mounts are required.

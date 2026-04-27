@@ -62,9 +62,8 @@ devenv shell -- uv run forge-demo-start-free-explore
 ```
 
 `setup.py` always resets the demo runtime to a known state.
-`start_stack.py` boots real local processes against localhost.
-`cleanup.py` stops all demo processes and removes runtime artifacts.
-Each wrapper calls a same-named `.sh` file that stays intentionally small and easy to inspect.
+`start_stack.py` boots the real `forge dev` orchestrator stack against localhost.
+`cleanup.py` stops the orchestrator process and removes runtime artifacts.
 
 To inspect live output manually after `start_stack.py`, open:
 
@@ -80,7 +79,7 @@ http://127.0.0.1:18080/index.html
 - `FORGE_OVERLAY_PROJECT_DIR` (default `/home/andrew/Documents/Projects/forge-overlay`)
 ## What `validate_full_stack.py` Asserts
 
-1. Real stack boot order and health: dummy API -> overlay -> kiln watcher.
+1. Real stack boot order and health: `forge dev` -> overlay + agent + kiln.
 2. Kiln watcher process includes `--no-serve` and `--on-rebuild`.
 3. Overlay injection is present (`/ops/ops.css`, `/ops/ops.js` in served HTML).
 4. Rebuild webhook delivery is confirmed (`POST /internal/rebuild` -> `204`) after real vault mutation.

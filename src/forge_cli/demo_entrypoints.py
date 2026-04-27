@@ -60,3 +60,7 @@ def docker_up() -> int:
 
 def docker_down() -> int:
     return _run_path(_repo_root() / "docker" / "down.py")
+
+
+def docker_validate() -> int:
+    return _run_path(_repo_root() / "docker" / "validate.py")

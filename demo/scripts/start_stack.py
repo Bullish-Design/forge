@@ -6,15 +6,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-import subprocess
+from lib import start_stack
 
 
 def main() -> int:
-    script = Path(__file__).resolve().with_name("start_stack.sh")
-    repo_root = script.parents[2]
-    completed = subprocess.run(["bash", str(script)], cwd=repo_root, check=False)
-    return completed.returncode
+    try:
+        return start_stack()
+    except RuntimeError as exc:
+        print(exc)
+        return 1
 
 
 if __name__ == "__main__":

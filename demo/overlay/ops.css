@@ -29,6 +29,11 @@
   margin-bottom: 8px;
 }
 
+#forge-demo-overlay label {
+  display: block;
+  margin-bottom: 4px;
+}
+
 #forge-demo-overlay .badge {
   display: inline-block;
   padding: 2px 6px;
@@ -41,6 +46,18 @@
   display: grid;
   gap: 6px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+#forge-demo-overlay textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: inherit;
+  padding: 6px 8px;
 }
 
 #forge-demo-overlay button {

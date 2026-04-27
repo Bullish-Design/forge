@@ -6,9 +6,13 @@
     <div class="body">
       <div class="row">SSE events: <span id="forge-demo-count" class="badge">0</span></div>
       <div class="row" id="forge-demo-status">status: connecting...</div>
+      <div class="row">
+        <label for="forge-demo-instruction">Prompt</label>
+        <textarea id="forge-demo-instruction" rows="4">Add a concise update with 2-3 actionable bullets for this note.</textarea>
+      </div>
       <div class="actions">
         <button id="forge-demo-health">API health</button>
-        <button id="forge-demo-apply">Dummy apply</button>
+        <button id="forge-demo-apply">Apply prompt</button>
         <button id="forge-demo-undo">Undo</button>
       </div>
       <pre id="forge-demo-output">Waiting for interaction...</pre>
@@ -19,6 +23,7 @@
   const countEl = document.getElementById("forge-demo-count");
   const statusEl = document.getElementById("forge-demo-status");
   const outputEl = document.getElementById("forge-demo-output");
+  const instructionEl = document.getElementById("forge-demo-instruction");
 
   let count = 0;
 
@@ -60,8 +65,9 @@
   });
 
   document.getElementById("forge-demo-apply").addEventListener("click", async () => {
+    const instruction = instructionEl.value.trim() || "Add a concise useful update for this note.";
     const data = await postJson("/api/agent/apply", {
-      instruction: "Add a deterministic demo update",
+      instruction,
       current_file: "projects/forge-v2.md",
     });
     setOutput(data);

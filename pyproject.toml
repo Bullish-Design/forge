@@ -1,6 +1,6 @@
 [project]
 name = "forge"
-version = "0.2.0"
+version = "0.3.0"
 description = "Forge orchestration and tooling."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -41,6 +41,7 @@ forge-demo-start-free-explore = "forge_cli.demo_entrypoints:demo_start_free_expl
 forge-demo-run-free-explore = "forge_cli.demo_entrypoints:demo_run_free_explore"
 forge-docker-up = "forge_cli.demo_entrypoints:docker_up"
 forge-docker-down = "forge_cli.demo_entrypoints:docker_down"
+forge-docker-validate = "forge_cli.demo_entrypoints:docker_validate"
 
 #[project.urls]
 #homepage = "https://github.com/Bullish-Design/forge"

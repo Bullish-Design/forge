@@ -28,9 +28,11 @@ services:
       context: ..
       dockerfile: docker/forge.Dockerfile
       args:
-        FORGE_OVERLAY_REF: ${FORGE_OVERLAY_REF:-main}
-        OBSIDIAN_AGENT_REF: ${OBSIDIAN_AGENT_REF:-main}
-        OBSIDIAN_OPS_REF: ${OBSIDIAN_OPS_REF:-main}
+        FORGE_OVERLAY_REF: ${FORGE_OVERLAY_REF:-v0.2.1}
+        OBSIDIAN_AGENT_REF: ${OBSIDIAN_AGENT_REF:-v0.3.1}
+        OBSIDIAN_OPS_REF: ${OBSIDIAN_OPS_REF:-v0.7.1}
+        KILN_REF: ${KILN_REF:-v0.10.3}
+        JJ_VERSION: ${JJ_VERSION:-0.36.0}
     image: forge:local
     pull_policy: never
     container_name: forge-app
@@ -60,7 +62,6 @@ services:
     volumes:
       - forge-vault:/data/vault
       - ../static:/app/static:ro
-      - ${KILN_BIN_HOST_PATH:-/usr/local/bin/kiln}:/usr/local/bin/kiln:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/"]
