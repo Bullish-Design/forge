@@ -19,7 +19,25 @@
         <button id="forge-close" aria-label="Close">\u2715</button>
       </div>
       <div class="forge-body">
-        <p style="color:#94a3b8;">Modal body — content coming in next steps.</p>
+        <div class="forge-file-row">
+          <input id="forge-file-path" class="forge-file-path" type="text" readonly />
+          <button id="forge-file-edit" class="forge-edit-btn" aria-label="Edit file path">\u270E</button>
+        </div>
+
+        <div class="forge-section">
+          <label class="forge-section-label" for="forge-instruction">Prompt</label>
+          <textarea id="forge-instruction" rows="3">Add a concise update with 2-3 actionable bullets for this note.</textarea>
+        </div>
+
+        <div class="forge-actions">
+          <button id="forge-send" class="forge-primary">Send</button>
+          <button id="forge-undo">Undo</button>
+          <button id="forge-health">Health</button>
+        </div>
+
+        <div class="forge-section" style="margin-top:12px;">
+          <pre id="forge-output" class="forge-output">Waiting for interaction...</pre>
+        </div>
       </div>
       <div class="forge-footer">
         <span id="forge-sse-status">SSE: connecting...</span>
@@ -28,6 +46,81 @@
     </div>
   `;
   document.body.appendChild(backdrop);
+
+  // ── Current File Detection ──────────────────────────
+  function detectCurrentFile() {
+    const p = window.location.pathname.replace(/^\//, "").replace(/\/$/, "");
+    if (!p) return "index.md";
+    return p.replace(/\.html$/, "") + ".md";
+  }
+
+  const filePathEl = document.getElementById("forge-file-path");
+  const fileEditBtn = document.getElementById("forge-file-edit");
+  filePathEl.value = detectCurrentFile();
+
+  let fileEditing = false;
+  fileEditBtn.addEventListener("click", () => {
+    fileEditing = !fileEditing;
+    filePathEl.readOnly = !fileEditing;
+    fileEditBtn.textContent = fileEditing ? "\u2713" : "\u270E";
+    if (fileEditing) filePathEl.focus();
+  });
+
+  // ── API Helpers ─────────────────────────────────────
+  const outputEl = document.getElementById("forge-output");
+  const instructionEl = document.getElementById("forge-instruction");
+
+  function setOutput(value) {
+    outputEl.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  }
+
+  async function postJson(path, payload) {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { status: response.status, body: text };
+    }
+  }
+
+  // ── Action Buttons ──────────────────────────────────
+  document.getElementById("forge-send").addEventListener("click", async () => {
+    const instruction = instructionEl.value.trim() || "Add a concise useful update for this note.";
+    const currentFile = filePathEl.value.trim();
+    setOutput("Sending...");
+    try {
+      const data = await postJson("/api/agent/apply", { instruction, current_file: currentFile });
+      setOutput(data);
+    } catch (err) {
+      setOutput("Error: " + err.message);
+    }
+  });
+
+  document.getElementById("forge-undo").addEventListener("click", async () => {
+    setOutput("Undoing...");
+    try {
+      const data = await postJson("/api/undo", {});
+      setOutput(data);
+    } catch (err) {
+      setOutput("Error: " + err.message);
+    }
+  });
+
+  document.getElementById("forge-health").addEventListener("click", async () => {
+    setOutput("Checking...");
+    try {
+      const response = await fetch("/api/health");
+      const data = await response.json();
+      setOutput(data);
+    } catch (err) {
+      setOutput("Error: " + err.message);
+    }
+  });
 
   // Prevent clicks inside the modal from closing via backdrop
   document.getElementById("forge-modal").addEventListener("click", (e) => {

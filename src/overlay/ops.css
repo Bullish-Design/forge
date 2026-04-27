@@ -146,3 +146,147 @@
     border-bottom: none;
   }
 }
+
+/* ── Modal body sections ──────────────────────────── */
+#forge-modal .forge-section {
+  margin-bottom: 12px;
+}
+
+#forge-modal .forge-section-label {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+/* File path row */
+#forge-modal .forge-file-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+#forge-modal .forge-file-path {
+  flex: 1;
+  font-size: 12px;
+  color: #e2e8f0;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: inherit;
+}
+
+#forge-modal .forge-file-path:read-only {
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+}
+
+#forge-modal .forge-file-path:not(:read-only):focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+#forge-modal .forge-edit-btn {
+  background: none;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 12px;
+  min-height: 32px;
+}
+
+#forge-modal .forge-edit-btn:hover {
+  border-color: #60a5fa;
+  color: #e2e8f0;
+}
+
+/* Prompt textarea */
+#forge-modal textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: inherit;
+  padding: 8px;
+}
+
+#forge-modal textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+/* Action buttons */
+#forge-modal .forge-actions {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 8px;
+}
+
+#forge-modal .forge-actions button {
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  cursor: pointer;
+  padding: 8px;
+  font-size: 11px;
+  font-family: inherit;
+  min-height: 44px;
+  transition: border-color 0.15s;
+}
+
+#forge-modal .forge-actions button:hover {
+  border-color: #60a5fa;
+}
+
+#forge-modal .forge-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#forge-modal .forge-actions button.forge-primary {
+  background: #1e3a5f;
+  border-color: #3b82f6;
+}
+
+/* Response output */
+#forge-modal .forge-output {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  background: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 8px;
+  max-height: 200px;
+  overflow: auto;
+  font: inherit;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+/* Footer reload button */
+#forge-modal .forge-footer button {
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #0f172a;
+  color: #e2e8f0;
+  cursor: pointer;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-family: inherit;
+  min-height: 32px;
+}
+
+#forge-modal .forge-footer button:hover {
+  border-color: #60a5fa;
+}
