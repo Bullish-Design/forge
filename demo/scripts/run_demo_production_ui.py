@@ -23,7 +23,7 @@ def main() -> int:
         return 1
 
     env = os.environ.copy()
-    env["DEMO_OVERLAY_TEMPLATE_DIR"] = str(PROD_OVERLAY_DIR)
+    env["DEMO_OVERLAY_DIR"] = str(PROD_OVERLAY_DIR)
 
     cmd = [sys.executable, str(SCRIPT_DIR / "run_demo.py")]
     completed = subprocess.run(cmd, cwd=REPO_ROOT, env=env, check=False)

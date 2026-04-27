@@ -2,18 +2,49 @@
   // ── State ───────────────────────────────────────────
   let modalOpen = localStorage.getItem("forge-modal-open") === "true";
   // ── Log State ───────────────────────────────────────
+  const LOGS_STORAGE_KEY = "forge-overlay-logs-v1";
   const logs = [];
   const MAX_LOGS = 50;
   let logIdCounter = 0;
   let unseenCount = 0;
   // Track which log entries are expanded
-  const expandedLogIds = new Set();
+  const expandedGlobalLogIds = new Set();
+  const expandedPageLogIds = new Set();
   let logsExpanded = false;
+  let globalLogsExpanded = false;
+  let pageLogsExpanded = false;
   const badgeEl = () => document.querySelector("#forge-trigger .forge-badge");
+
+  function loadPersistedLogs() {
+    try {
+      const raw = localStorage.getItem(LOGS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const sliced = parsed.slice(0, MAX_LOGS);
+      logs.splice(0, logs.length, ...sliced);
+      for (const entry of logs) {
+        if (entry && typeof entry.id === "number" && entry.id > logIdCounter) {
+          logIdCounter = entry.id;
+        }
+      }
+    } catch {
+      // Ignore malformed persisted logs.
+    }
+  }
+
+  function persistLogs() {
+    try {
+      localStorage.setItem(LOGS_STORAGE_KEY, JSON.stringify(logs.slice(0, MAX_LOGS)));
+    } catch {
+      // Ignore storage write failures.
+    }
+  }
 
   function addLog(entry) {
     logs.unshift(entry); // newest first
     if (logs.length > MAX_LOGS) logs.pop();
+    persistLogs();
     if (!modalOpen) {
       unseenCount++;
       const b = badgeEl();
@@ -23,15 +54,28 @@
   }
 
   function renderLogs() {
-    const listEl = document.getElementById("forge-logs-list");
     const countEl = document.getElementById("forge-logs-count");
-    if (!listEl || !countEl) return;
+    const globalCountEl = document.getElementById("forge-logs-global-count");
+    const pageCountEl = document.getElementById("forge-logs-page-count");
+    const globalListEl = document.getElementById("forge-logs-global-list");
+    const pageListEl = document.getElementById("forge-logs-page-list");
+    if (!countEl || !globalCountEl || !pageCountEl || !globalListEl || !pageListEl) return;
+
+    const currentFile = detectCurrentFile();
+    const pageLogs = logs.filter((entry) => entry.page_file === currentFile);
 
     countEl.textContent = String(logs.length);
+    globalCountEl.textContent = String(logs.length);
+    pageCountEl.textContent = String(pageLogs.length);
 
-    listEl.innerHTML = logs
+    renderLogList(logs, globalListEl, expandedGlobalLogIds);
+    renderLogList(pageLogs, pageListEl, expandedPageLogIds);
+  }
+
+  function renderLogList(entries, listEl, expandedSet) {
+    listEl.innerHTML = entries
       .map((entry) => {
-        const isExpanded = expandedLogIds.has(entry.id);
+        const isExpanded = expandedSet.has(entry.id);
         const statusClass = entry.status >= 400 || entry.error ? "error" : "";
         const statusText = entry.error ? "ERR" : String(entry.status);
         const duration = entry.duration_ms > 0 ? (entry.duration_ms / 1000).toFixed(1) + "s" : "...";
@@ -84,6 +128,8 @@
       timestamp: Date.now(),
       method: (options && options.method) || "GET",
       url: url,
+      page_file: detectCurrentFile(),
+      page_path: window.location.pathname,
       request: null,
       response: null,
       duration_ms: 0,
@@ -112,6 +158,7 @@
         } catch {
           entry.response = text;
         }
+        persistLogs();
         renderLogs();
       });
 
@@ -124,6 +171,7 @@
       throw err;
     }
   };
+  loadPersistedLogs();
 
   // ── Trigger Button ──────────────────────────────────
   const trigger = document.createElement("button");
@@ -163,7 +211,18 @@
             <span class="forge-caret" id="forge-logs-caret">\u25B8</span>
             <span>Logs (<span id="forge-logs-count">0</span>)</span>
           </button>
-          <div class="forge-logs-list" id="forge-logs-list"></div>
+          <div class="forge-logs-list" id="forge-logs-list">
+            <button class="forge-sublogs-header" id="forge-logs-global-toggle">
+              <span class="forge-caret" id="forge-logs-global-caret">\u25B8</span>
+              <span>Global (<span id="forge-logs-global-count">0</span>)</span>
+            </button>
+            <div class="forge-sublogs-list" id="forge-logs-global-list"></div>
+            <button class="forge-sublogs-header" id="forge-logs-page-toggle">
+              <span class="forge-caret" id="forge-logs-page-caret">\u25B8</span>
+              <span>This Page (<span id="forge-logs-page-count">0</span>)</span>
+            </button>
+            <div class="forge-sublogs-list" id="forge-logs-page-list"></div>
+          </div>
         </div>
 
         <div class="forge-section">
@@ -185,21 +244,45 @@
     document.getElementById("forge-logs-caret").classList.toggle("open", logsExpanded);
   });
 
-  // ── Log Entry Expand/Collapse (event delegation) ───
-  document.getElementById("forge-logs-list").addEventListener("click", (e) => {
-    const entry = e.target.closest(".forge-log-entry");
-    if (!entry) return;
-    const logId = Number(entry.dataset.logId);
-    const detail = entry.querySelector(".forge-log-detail");
-    if (!detail) return;
-    if (expandedLogIds.has(logId)) {
-      expandedLogIds.delete(logId);
-      detail.classList.remove("open");
-    } else {
-      expandedLogIds.add(logId);
-      detail.classList.add("open");
-    }
+  document.getElementById("forge-logs-global-toggle").addEventListener("click", () => {
+    globalLogsExpanded = !globalLogsExpanded;
+    document.getElementById("forge-logs-global-list").classList.toggle("open", globalLogsExpanded);
+    document.getElementById("forge-logs-global-caret").classList.toggle("open", globalLogsExpanded);
   });
+
+  document.getElementById("forge-logs-page-toggle").addEventListener("click", () => {
+    pageLogsExpanded = !pageLogsExpanded;
+    document.getElementById("forge-logs-page-list").classList.toggle("open", pageLogsExpanded);
+    document.getElementById("forge-logs-page-caret").classList.toggle("open", pageLogsExpanded);
+  });
+
+  // ── Log Entry Expand/Collapse (event delegation) ───
+  function attachLogEntryToggle(listId, expandedSet) {
+    const list = document.getElementById(listId);
+    list.addEventListener("click", (e) => {
+      const entry = e.target.closest(".forge-log-entry");
+      if (!entry) return;
+      const logId = Number(entry.dataset.logId);
+      const detail = entry.querySelector(".forge-log-detail");
+      if (!detail) return;
+      if (expandedSet.has(logId)) {
+        expandedSet.delete(logId);
+        detail.classList.remove("open");
+      } else {
+        expandedSet.add(logId);
+        detail.classList.add("open");
+      }
+    });
+  }
+
+  attachLogEntryToggle("forge-logs-global-list", expandedGlobalLogIds);
+  attachLogEntryToggle("forge-logs-page-list", expandedPageLogIds);
+
+  // Keep This Page counts accurate after client-side nav.
+  const syncCurrentFilePathAndLogs = () => {
+    syncCurrentFilePath();
+    renderLogs();
+  };
 
   // ── Current File Detection ──────────────────────────
   function detectCurrentFile() {
@@ -210,15 +293,35 @@
 
   const filePathEl = document.getElementById("forge-file-path");
   const fileEditBtn = document.getElementById("forge-file-edit");
-  filePathEl.value = detectCurrentFile();
-
   let fileEditing = false;
+  function syncCurrentFilePath() {
+    if (fileEditing) return;
+    filePathEl.value = detectCurrentFile();
+  }
+
+  syncCurrentFilePathAndLogs();
+
   fileEditBtn.addEventListener("click", () => {
     fileEditing = !fileEditing;
     filePathEl.readOnly = !fileEditing;
     fileEditBtn.textContent = fileEditing ? "\u2713" : "\u270E";
     if (fileEditing) filePathEl.focus();
   });
+
+  window.addEventListener("popstate", syncCurrentFilePathAndLogs);
+  window.addEventListener("hashchange", syncCurrentFilePathAndLogs);
+  const originalPushState = history.pushState;
+  history.pushState = function (...args) {
+    const result = originalPushState.apply(this, args);
+    syncCurrentFilePathAndLogs();
+    return result;
+  };
+  const originalReplaceState = history.replaceState;
+  history.replaceState = function (...args) {
+    const result = originalReplaceState.apply(this, args);
+    syncCurrentFilePathAndLogs();
+    return result;
+  };
 
   // ── API Helpers ─────────────────────────────────────
   const outputEl = document.getElementById("forge-output");
@@ -249,6 +352,15 @@
     setOutput("Sending...");
     try {
       const data = await postJson("/api/agent/apply", { instruction, current_file: currentFile });
+      if (data && data.error === "upstream_unavailable") {
+        setOutput({
+          error: "upstream_unavailable",
+          detail:
+            "Overlay API proxy could not reach or await agent apply completion in time. Verify agent is healthy and consider reducing prompt scope or increasing proxy timeout in forge-overlay config.",
+          attempted_current_file: currentFile,
+        });
+        return;
+      }
       setOutput(data);
     } catch (err) {
       setOutput("Error: " + err.message);
@@ -299,6 +411,7 @@
 
   // ── Open / Close ────────────────────────────────────
   function openModal() {
+    syncCurrentFilePathAndLogs();
     modalOpen = true;
     localStorage.setItem("forge-modal-open", "true");
     backdrop.classList.add("open");

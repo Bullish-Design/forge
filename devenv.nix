@@ -8,7 +8,8 @@
   packages = [ 
     pkgs.git 
     pkgs.uv
-    ];
+    pkgs.jujutsu
+  ];
 
   # https://devenv.sh/languages/
   # languages.rust.enable = true;
