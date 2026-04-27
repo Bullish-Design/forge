@@ -122,6 +122,22 @@
     }
   });
 
+  // ── SSE Connection ──────────────────────────────────
+  const sseStatusEl = document.getElementById("forge-sse-status");
+  let sseCount = 0;
+
+  const source = new EventSource("/ops/events");
+  source.onopen = () => {
+    sseStatusEl.textContent = "SSE: connected";
+  };
+  source.onmessage = () => {
+    sseCount += 1;
+    sseStatusEl.textContent = `SSE: connected (${sseCount} events)`;
+  };
+  source.onerror = () => {
+    sseStatusEl.textContent = "SSE: reconnecting...";
+  };
+
   // Prevent clicks inside the modal from closing via backdrop
   document.getElementById("forge-modal").addEventListener("click", (e) => {
     e.stopPropagation();
