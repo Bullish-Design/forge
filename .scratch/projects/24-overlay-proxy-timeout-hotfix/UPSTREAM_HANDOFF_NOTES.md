@@ -1,6 +1,4 @@
-# Upstream Handoff Notes (Draft)
-
-This document will be finalized after implementation is validated.
+# Upstream Handoff Notes
 
 Intended upstream changes:
 - Add `api_proxy_timeout_s` in forge-overlay config model.
@@ -9,5 +7,5 @@ Intended upstream changes:
 - Return a specific error payload for timeout conditions.
 
 Follow-up from forge repo:
-- Add forge config field for overlay proxy timeout.
-- Pass through to forge-overlay invocation.
+- [x] Add forge config field for overlay proxy timeout (`overlay_api_proxy_timeout_s`, default `600.0`).
+- [x] Pass through to forge-overlay invocation (`--api-proxy-timeout-s`).

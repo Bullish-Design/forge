@@ -12,6 +12,7 @@ def test_load_defaults_when_config_missing(tmp_path: Path) -> None:
     assert cfg.output_dir == Path("public")
     assert cfg.overlay_dir == Path("static")
     assert cfg.port == 8080
+    assert cfg.overlay_api_proxy_timeout_s == 600.0
     assert cfg.agent_port == 8081
     assert cfg.sync_after_commit is False
     assert cfg.sync_remote == "origin"
@@ -30,6 +31,7 @@ vault_dir: ./notes
 output_dir: ./dist
 overlay_dir: ./overlay
 port: 9090
+overlay_api_proxy_timeout_s: 777.0
 
 agent:
   host: 0.0.0.0
@@ -60,6 +62,7 @@ sync:
     assert cfg.output_dir == Path("dist")
     assert cfg.overlay_dir == Path("overlay")
     assert cfg.port == 9090
+    assert cfg.overlay_api_proxy_timeout_s == 777.0
     assert cfg.agent_host == "0.0.0.0"
     assert cfg.agent_port == 9191
     assert cfg.agent_vault_dir == Path("agent-vault")
@@ -94,6 +97,7 @@ sync:
     monkeypatch.setenv("FORGE_AGENT_PORT", "8001")
     monkeypatch.setenv("FORGE_VAULT_DIR", "./vault-from-env")
     monkeypatch.setenv("FORGE_SYNC_AFTER_COMMIT", "true")
+    monkeypatch.setenv("FORGE_OVERLAY_API_PROXY_TIMEOUT_S", "900")
 
     cfg = ForgeConfig.load(cfg_path)
 
@@ -101,3 +105,4 @@ sync:
     assert cfg.agent_port == 8001
     assert cfg.vault_dir == Path("vault-from-env")
     assert cfg.sync_after_commit is True
+    assert cfg.overlay_api_proxy_timeout_s == 900.0

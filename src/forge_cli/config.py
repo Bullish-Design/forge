@@ -22,6 +22,7 @@ class ForgeConfig(BaseSettings):
 
     host: str = "127.0.0.1"
     port: int = Field(default=8080, ge=1, le=65535)
+    overlay_api_proxy_timeout_s: float = Field(default=600.0, gt=0.0)
 
     agent_host: str = "127.0.0.1"
     agent_port: int = Field(default=8081, ge=1, le=65535)
@@ -90,6 +91,7 @@ def _load_yaml_config(path: Path) -> dict[str, Any]:
         "overlay_dir",
         "host",
         "port",
+        "overlay_api_proxy_timeout_s",
         "agent_host",
         "agent_port",
         "agent_vault_dir",

@@ -148,6 +148,7 @@ def _render_default_config(cfg: ForgeConfig) -> str:
         "overlay_dir": str(cfg.overlay_dir),
         "host": cfg.host,
         "port": cfg.port,
+        "overlay_api_proxy_timeout_s": cfg.overlay_api_proxy_timeout_s,
         "agent": {
             "host": cfg.agent_host,
             "port": cfg.agent_port,

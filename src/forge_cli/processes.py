@@ -120,6 +120,8 @@ class ProcessManager:
                 str(overlay_dir),
                 "--api-upstream",
                 config.agent_url,
+                "--api-proxy-timeout-s",
+                str(config.overlay_api_proxy_timeout_s),
                 "--host",
                 config.host,
                 "--port",

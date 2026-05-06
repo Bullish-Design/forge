@@ -86,6 +86,9 @@ def test_process_manager_starts_overlay_agent_then_kiln(monkeypatch: pytest.Monk
 
     assert [call[0][0] for call in launched] == ["forge-overlay", "obsidian-agent", "kiln"]
     assert waited == [f"{cfg.overlay_url}/", f"{cfg.agent_url}/api/health"]
+    overlay_cmd = launched[0][0]
+    assert "--api-proxy-timeout-s" in overlay_cmd
+    assert str(cfg.overlay_api_proxy_timeout_s) in overlay_cmd
 
     kiln_cmd = launched[2][0]
     assert "--no-serve" in kiln_cmd
@@ -363,6 +366,7 @@ def test_init_scaffolds_directories_and_config(monkeypatch: pytest.MonkeyPatch, 
     assert parsed["vault_dir"] == str(vault_dir)
     assert parsed["output_dir"] == str(output_dir)
     assert parsed["overlay_dir"] == str(overlay_dir)
+    assert parsed["overlay_api_proxy_timeout_s"] == 600.0
     assert parsed["sync"]["after_commit"] is False
     assert parsed["sync"]["remote"] == "origin"
 
