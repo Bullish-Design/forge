@@ -8,6 +8,7 @@ separate git-sync container.
 
 - `tailscale`: network namespace + tunnel.
 - `forge`: runs `forge dev` (`forge-overlay`, `obsidian-agent`, `kiln`).
+  - Production overlay assets are served from `/app/src/overlay` (`ops.js`, `ops.css`).
 
 ## Key Files
 
