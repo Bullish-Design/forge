@@ -80,6 +80,11 @@
         const statusText = entry.error ? "ERR" : String(entry.status);
         const duration = entry.duration_ms > 0 ? (entry.duration_ms / 1000).toFixed(1) + "s" : "...";
         const shortUrl = entry.url.replace(/^\/api\//, "");
+        const meta = extractLogMeta(entry.response);
+        const metaPieces = [];
+        if (meta.model) metaPieces.push(`<span class="forge-log-meta-item">${escapeHtml(meta.model)}</span>`);
+        if (meta.tokens) metaPieces.push(`<span class="forge-log-meta-item">${escapeHtml(meta.tokens)}</span>`);
+        const metaHtml = metaPieces.length ? `<span class="forge-log-meta">${metaPieces.join("")}</span>` : "";
 
         let detailHtml = "";
         if (entry.request != null) {
@@ -99,6 +104,7 @@
           <div class="forge-log-summary">
             <span class="forge-log-method">${entry.method}</span>
             <span class="forge-log-url">${escapeHtml(shortUrl)}</span>
+            ${metaHtml}
             <span class="forge-log-status ${statusClass}">${statusText}</span>
             <span class="forge-log-duration">${duration}</span>
           </div>
@@ -107,6 +113,60 @@
       `;
       })
       .join("");
+  }
+
+  function extractLogMeta(response) {
+    if (!response || typeof response !== "object") return {};
+    const model = findFirstString(response, ["model", "llm_model", "model_name"]);
+    const usage = findUsageObject(response);
+    const totalTokens =
+      typeof usage?.total_tokens === "number"
+        ? usage.total_tokens
+        : typeof usage?.totalTokens === "number"
+          ? usage.totalTokens
+          : null;
+    const inputTokens =
+      typeof usage?.prompt_tokens === "number"
+        ? usage.prompt_tokens
+        : typeof usage?.input_tokens === "number"
+          ? usage.input_tokens
+          : null;
+    const outputTokens =
+      typeof usage?.completion_tokens === "number"
+        ? usage.completion_tokens
+        : typeof usage?.output_tokens === "number"
+          ? usage.output_tokens
+          : null;
+    let tokens = null;
+    if (totalTokens != null) {
+      tokens = `${totalTokens} tok`;
+    } else if (inputTokens != null || outputTokens != null) {
+      const inText = inputTokens != null ? String(inputTokens) : "?";
+      const outText = outputTokens != null ? String(outputTokens) : "?";
+      tokens = `${inText}/${outText} tok`;
+    }
+    return { model, tokens };
+  }
+
+  function findUsageObject(value) {
+    if (!value || typeof value !== "object") return null;
+    if (value.usage && typeof value.usage === "object") return value.usage;
+    if (value.metrics && value.metrics.usage && typeof value.metrics.usage === "object") return value.metrics.usage;
+    if (value.result && value.result.usage && typeof value.result.usage === "object") return value.result.usage;
+    return null;
+  }
+
+  function findFirstString(value, keys) {
+    if (!value || typeof value !== "object") return null;
+    for (const key of keys) {
+      if (typeof value[key] === "string" && value[key].trim()) return value[key].trim();
+    }
+    if (value.result && typeof value.result === "object") {
+      for (const key of keys) {
+        if (typeof value.result[key] === "string" && value.result[key].trim()) return value.result[key].trim();
+      }
+    }
+    return null;
   }
 
   function escapeHtml(str) {
