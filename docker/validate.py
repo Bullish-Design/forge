@@ -155,6 +155,11 @@ def main() -> int:
         rendered_url = ensure_contains_any(candidate_urls, "/ops/ops.css", timeout_s=180.0)
         ensure_contains(rendered_url, "/ops/ops.js", timeout_s=180.0)
         ensure_contains(rendered_url, token, timeout_s=180.0)
+        print("[docker-validate] verifying production overlay assets are served...")
+        ensure_contains(f"{base}/ops/ops.js", "forge-trigger", timeout_s=60.0)
+        ensure_contains(f"{base}/ops/ops.js", "forge-logs-global-list", timeout_s=60.0)
+        ensure_contains(f"{base}/ops/ops.css", "#forge-trigger", timeout_s=60.0)
+        ensure_contains(f"{base}/ops/ops.css", "#forge-modal", timeout_s=60.0)
 
         undo = http_post_json(f"{api}/vault/undo", {})
         if not undo.get("ok", False):

@@ -17,10 +17,12 @@ DEMO_DIR = SCRIPT_DIR.parent
 RUNTIME_DIR = Path(os.environ.get("DEMO_RUNTIME_DIR", str(DEMO_DIR / "runtime")))
 VAULT_TEMPLATE_DIR = DEMO_DIR / "vault-template"
 OVERLAY_TEMPLATE_DIR = DEMO_DIR / "overlay"
+OVERLAY_TEMPLATE_DIR = Path(os.environ.get("DEMO_OVERLAY_TEMPLATE_DIR", str(OVERLAY_TEMPLATE_DIR)))
 
 VAULT_DIR = RUNTIME_DIR / "vault"
 PUBLIC_DIR = RUNTIME_DIR / "public"
 OVERLAY_DIR = RUNTIME_DIR / "overlay"
+CONFIG_OVERLAY_DIR = Path(os.environ.get("DEMO_OVERLAY_DIR", str(OVERLAY_DIR)))
 LOG_DIR = RUNTIME_DIR / "logs"
 PID_FILE = RUNTIME_DIR / "pids.env"
 CONFIG_FILE = RUNTIME_DIR / "forge.demo.yaml"
@@ -51,7 +53,7 @@ def fail(message: str) -> RuntimeError:
 
 def require_dependency_commands() -> None:
     # We intentionally require these to exist since forge dev relies on them.
-    for command in ("forge", "obsidian-agent", "forge-overlay"):
+    for command in ("forge", "obsidian-agent", "forge-overlay", "jj"):
         if shutil.which(command) is None:
             raise fail(f"required dependency command not installed on PATH: {command}")
 
@@ -203,7 +205,7 @@ def write_demo_config() -> None:
             [
                 f"vault_dir: {VAULT_DIR}",
                 f"output_dir: {PUBLIC_DIR}",
-                f"overlay_dir: {OVERLAY_DIR}",
+                f"overlay_dir: {CONFIG_OVERLAY_DIR}",
                 f"host: {DEMO_OVERLAY_HOST}",
                 f"port: {DEMO_OVERLAY_PORT}",
                 "",
@@ -231,11 +233,15 @@ def setup_runtime() -> None:
     shutil.rmtree(RUNTIME_DIR, ignore_errors=True)
     VAULT_DIR.mkdir(parents=True, exist_ok=True)
     PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
-    OVERLAY_DIR.mkdir(parents=True, exist_ok=True)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     shutil.copytree(VAULT_TEMPLATE_DIR, VAULT_DIR, dirs_exist_ok=True)
-    shutil.copytree(OVERLAY_TEMPLATE_DIR, OVERLAY_DIR, dirs_exist_ok=True)
+    subprocess.run(["jj", "git", "init", str(VAULT_DIR)], check=True)
+    if CONFIG_OVERLAY_DIR == OVERLAY_DIR:
+        OVERLAY_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(OVERLAY_TEMPLATE_DIR, OVERLAY_DIR, dirs_exist_ok=True)
+    elif not CONFIG_OVERLAY_DIR.exists():
+        raise fail(f"configured DEMO_OVERLAY_DIR does not exist: {CONFIG_OVERLAY_DIR}")
 
     write_demo_config()
     log("runtime prepared")

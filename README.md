@@ -20,6 +20,18 @@ For the real vLLM-backed free-explore UI demo:
 devenv shell -- uv run forge-demo-run-free-explore
 ```
 
+For the production overlay UI demo runner:
+
+```bash
+devenv shell -- uv run prod-demo
+```
+
+Production overlay implementation details and usage:
+
+```bash
+src/overlay/README.md
+```
+
 For Docker + Tailscale + agent-native jj sync setup, see:
 
 ```bash

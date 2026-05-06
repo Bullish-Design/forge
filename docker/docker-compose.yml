@@ -44,7 +44,7 @@ services:
       FORGE_CONFIG_PATH: /app/forge.yaml
       FORGE_VAULT_DIR: /data/vault
       FORGE_OUTPUT_DIR: /data/public
-      FORGE_OVERLAY_DIR: /app/static
+      FORGE_OVERLAY_DIR: /app/src/overlay
       FORGE_HOST: ${FORGE_HOST:-0.0.0.0}
       FORGE_PORT: ${FORGE_INTERNAL_PORT:-8080}
       FORGE_AGENT_HOST: 127.0.0.1
@@ -61,7 +61,6 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - forge-vault:/data/vault
-      - ../static:/app/static:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/"]

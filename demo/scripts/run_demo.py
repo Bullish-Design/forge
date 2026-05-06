@@ -22,11 +22,13 @@ from urllib import request
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEMO_DIR = SCRIPT_DIR.parent
+REPO_ROOT = DEMO_DIR.parent
 RUNTIME_DIR = Path(os.environ.get("DEMO_RUNTIME_DIR", str(DEMO_DIR / "runtime")))
 VAULT_DIR = RUNTIME_DIR / "vault"
 PUBLIC_DIR = RUNTIME_DIR / "public"
 LOG_DIR = RUNTIME_DIR / "logs"
 PID_FILE = RUNTIME_DIR / "pids.env"
+CONFIG_FILE = RUNTIME_DIR / "forge.demo.yaml"
 
 DEMO_OVERLAY_HOST = os.environ.get("DEMO_OVERLAY_HOST", "127.0.0.1")
 DEMO_OVERLAY_PORT = int(os.environ.get("DEMO_OVERLAY_PORT", "18080"))
@@ -215,6 +217,26 @@ def show_site_urls() -> None:
     print(f"Mutation note:  http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/projects/forge-v2")
 
 
+def overlay_assets_label() -> str:
+    production_overlay = (REPO_ROOT / "src" / "overlay").resolve()
+    demo_overlay = (DEMO_DIR / "overlay").resolve()
+
+    configured_overlay: Path | None = None
+    if CONFIG_FILE.exists():
+        for line in CONFIG_FILE.read_text(encoding="utf-8").splitlines():
+            if line.startswith("overlay_dir:"):
+                configured_value = line.split(":", 1)[1].strip()
+                if configured_value:
+                    configured_overlay = Path(configured_value).resolve()
+                break
+
+    if configured_overlay == production_overlay:
+        return "production overlay assets"
+    if configured_overlay == demo_overlay or configured_overlay == (RUNTIME_DIR / "overlay").resolve():
+        return "demo overlay assets"
+    return f"overlay assets from {configured_overlay}" if configured_overlay else "overlay assets"
+
+
 def maybe_keep_stack_running() -> None:
     global KEEP_STACK_RUNNING
 
@@ -248,7 +270,7 @@ def run_walkthrough() -> None:
     show_site_urls()
     print("\nTalking points:")
     print(" - kiln-fork is running watch mode with --no-serve and --on-rebuild.")
-    print(" - forge-overlay serves generated output and injects demo overlay assets.")
+    print(f" - forge-overlay serves generated output and injects {overlay_assets_label()}.")
     print(" - real obsidian-agent is running behind overlay through forge dev.")
     pause_step("Open the URLs and inspect baseline behavior, then press any key...")
 
