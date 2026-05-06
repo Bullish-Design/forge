@@ -16,7 +16,7 @@ def main() -> int:
     cfg_path = Path(env("FORGE_CONFIG_PATH", "/app/forge.yaml"))
     vault_dir = env("FORGE_VAULT_DIR", "/data/vault")
     output_dir = env("FORGE_OUTPUT_DIR", "/data/public")
-    overlay_dir = env("FORGE_OVERLAY_DIR", "/app/static")
+    overlay_dir = env("FORGE_OVERLAY_DIR", "/app/src/overlay")
     host = env("FORGE_HOST", "0.0.0.0")
     port = env("FORGE_PORT", "8080")
     agent_host = env("FORGE_AGENT_HOST", "127.0.0.1")
