@@ -109,6 +109,7 @@ class ProcessManager:
         return managed
 
     def start_overlay(self, config: ForgeConfig) -> ManagedProcess:
+        overlay_dir = self.resolve_overlay_dir(config.overlay_dir)
         process = self.start(
             "overlay",
             [
@@ -116,7 +117,7 @@ class ProcessManager:
                 "--site-dir",
                 str(config.output_dir),
                 "--overlay-dir",
-                str(config.overlay_dir),
+                str(overlay_dir),
                 "--api-upstream",
                 config.agent_url,
                 "--host",
@@ -130,6 +131,26 @@ class ProcessManager:
             expected_statuses={200, 301, 302, 404},
         )
         return process
+
+    @staticmethod
+    def _has_overlay_assets(overlay_dir: Path) -> bool:
+        return (overlay_dir / "ops.js").exists() and (overlay_dir / "ops.css").exists()
+
+    @classmethod
+    def resolve_overlay_dir(cls, configured_overlay_dir: Path) -> Path:
+        if cls._has_overlay_assets(configured_overlay_dir):
+            return configured_overlay_dir
+
+        repo_overlay_dir = Path(__file__).resolve().parents[2] / "src" / "overlay"
+        if cls._has_overlay_assets(repo_overlay_dir):
+            print(
+                "[forge] configured overlay_dir missing ops.js/ops.css; "
+                f"falling back to {repo_overlay_dir}",
+                file=sys.stderr,
+            )
+            return repo_overlay_dir
+
+        return configured_overlay_dir
 
     def start_agent(self, config: ForgeConfig) -> ManagedProcess:
         passthrough_keys = (
