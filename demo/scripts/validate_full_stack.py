@@ -48,6 +48,31 @@ def http_put_json(url: str, payload: dict[str, object]) -> dict[str, object]:
         return json.loads(response.read().decode("utf-8"))
 
 
+def submit_job(base_url: str, operation: str, payload: dict[str, object] | None = None) -> dict[str, object]:
+    body: dict[str, object] = {"operation": operation}
+    if payload is not None:
+        body["payload"] = payload
+    return http_post_json(f"{base_url}/v1/jobs", body)
+
+
+def fetch_job(base_url: str, job_id: str) -> dict[str, object]:
+    return http_get_json(f"{base_url}/v1/jobs/{job_id}")
+
+
+def poll_job(base_url: str, job_id: str, timeout_s: float = 130.0) -> dict[str, object]:
+    terminal = {"succeeded", "failed"}
+    latest: dict[str, object] = {}
+
+    def _done() -> bool:
+        nonlocal latest
+        latest = fetch_job(base_url, job_id)
+        return str(latest.get("status")) in terminal
+
+    if not wait_until(_done, timeout_s=timeout_s, interval_s=0.5):
+        raise fail(f"job {job_id} did not complete in time")
+    return latest
+
+
 def _vault_append_token(api_base: str, path: str, token: str) -> dict[str, object]:
     current = http_get_json(f"{api_base}/vault/files?path={urlparse.quote(path)}")
     content = str(current.get("content", ""))
@@ -120,7 +145,8 @@ def main() -> int:
         assert_kiln_flags_present()
 
         root_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/index.html"
-        api_base = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api"
+        base_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}"
+        api_base = f"{base_url}/api"
 
         root_html = request.urlopen(request.Request(root_url, method="GET"), timeout=20).read().decode("utf-8", errors="ignore")
         if "/ops/ops.css" not in root_html or "/ops/ops.js" not in root_html:
@@ -166,18 +192,23 @@ def main() -> int:
             raise fail("overlay rebuild webhook not observed in forge log")
 
         apply_token = f"VALIDATION_APPLY_{int(time.time())}"
-        apply_via = "agent"
+        apply_via = "job"
         fallback_original_content: str | None = None
         try:
-            apply_payload = http_post_json(
-                f"{api_base}/agent/apply",
+            submit_payload = submit_job(
+                base_url,
+                "apply",
                 {
                     "instruction": f"Append exactly this line at end of file: {apply_token}",
                     "current_file": "projects/forge-v2.md",
                 },
             )
-            if not apply_payload.get("ok", False):
-                raise RuntimeError(f"agent apply failed: {apply_payload}")
+            job_id = str(submit_payload.get("job_id", "")).strip()
+            if not job_id:
+                raise RuntimeError(f"submit did not return job id: {submit_payload}")
+            apply_payload = poll_job(base_url, job_id)
+            if apply_payload.get("status") != "succeeded":
+                raise RuntimeError(f"apply job failed: {apply_payload}")
         except (urlerror.HTTPError, RuntimeError):
             apply_via = "vault"
             fallback_original_content = str(
@@ -191,13 +222,18 @@ def main() -> int:
         if not wait_until(lambda: apply_token in read_text(forge_note_html), timeout_s=90):
             raise fail("apply token not observed in rendered note")
 
-        undo_payload = (
-            http_post_json(f"{api_base}/agent/undo", {})
-            if apply_via == "agent"
-            else _vault_restore_content(api_base, "projects/forge-v2.md", fallback_original_content or "")
-        )
-        if not undo_payload.get("ok", False):
-            raise fail(f"undo request failed: {undo_payload}")
+        if apply_via == "job":
+            undo_submit = submit_job(base_url, "undo")
+            undo_job_id = str(undo_submit.get("job_id", "")).strip()
+            if not undo_job_id:
+                raise fail(f"undo submit missing job id: {undo_submit}")
+            undo_payload = poll_job(base_url, undo_job_id)
+            if undo_payload.get("status") != "succeeded":
+                raise fail(f"undo job failed: {undo_payload}")
+        else:
+            undo_payload = _vault_restore_content(api_base, "projects/forge-v2.md", fallback_original_content or "")
+            if not undo_payload.get("ok", False):
+                raise fail(f"undo request failed: {undo_payload}")
 
         if not wait_until(lambda: apply_token not in read_text(forge_note_html), timeout_s=90):
             raise fail("undo did not remove apply token from rendered note")

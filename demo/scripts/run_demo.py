@@ -144,6 +144,31 @@ def http_put_json(url: str, payload: dict[str, object]) -> bytes:
         return response.read()
 
 
+def submit_job(base_url: str, operation: str, payload: dict[str, object] | None = None) -> dict[str, object]:
+    body: dict[str, object] = {"operation": operation}
+    if payload is not None:
+        body["payload"] = payload
+    return json.loads(http_post_json(f"{base_url}/v1/jobs", body).decode("utf-8"))
+
+
+def fetch_job(base_url: str, job_id: str) -> dict[str, object]:
+    return json.loads(http_get(f"{base_url}/v1/jobs/{job_id}").decode("utf-8"))
+
+
+def poll_job(base_url: str, job_id: str, timeout_s: float = 130.0) -> dict[str, object]:
+    terminal = {"succeeded", "failed"}
+    latest: dict[str, object] = {}
+
+    def _done() -> bool:
+        nonlocal latest
+        latest = fetch_job(base_url, job_id)
+        return str(latest.get("status")) in terminal
+
+    if not wait_until(_done, timeout_s=timeout_s, interval_s=0.5):
+        raise fail(f"job {job_id} did not complete in time")
+    return latest
+
+
 def vault_append_token(api_base: str, path: str, token: str) -> dict[str, object]:
     payload = json.loads(http_get(f"{api_base}/vault/files?path={urlparse.quote(path)}").decode("utf-8"))
     content = str(payload.get("content", ""))
@@ -341,26 +366,29 @@ def run_walkthrough() -> None:
     print(json.dumps(status_payload, indent=2, sort_keys=True))
     pause_step("After reviewing sync endpoint output, press any key...")
 
-    step_header("6", "Run Deterministic Apply Through Overlay")
-    apply_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api/agent/apply"
+    step_header("6", "Run Deterministic Apply Job Through Overlay")
+    base_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}"
     api_base = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api"
     note_html = rendered_html_path("projects/forge-v2.md")
     apply_token = f"WALKTHROUGH_APPLY_{int(time.time())}"
     baseline_marker_count = count_substring(note_html, apply_token)
-    apply_via = "agent"
+    apply_via = "job"
     fallback_original_content: str | None = None
     try:
-        apply_payload = json.loads(
-            http_post_json(
-                apply_url,
-                {
-                    "instruction": f"Append exactly this line at end of file: {apply_token}",
-                    "current_file": "projects/forge-v2.md",
-                },
-            ).decode("utf-8")
+        apply_submit = submit_job(
+            base_url,
+            "apply",
+            {
+                "instruction": f"Append exactly this line at end of file: {apply_token}",
+                "current_file": "projects/forge-v2.md",
+            },
         )
-        if not apply_payload.get("ok"):
-            raise RuntimeError(f"agent apply returned not ok: {apply_payload}")
+        apply_job_id = str(apply_submit.get("job_id", "")).strip()
+        if not apply_job_id:
+            raise RuntimeError(f"job submit did not return job_id: {apply_submit}")
+        apply_payload = poll_job(base_url, apply_job_id)
+        if apply_payload.get("status") != "succeeded":
+            raise RuntimeError(f"job apply returned non-success terminal state: {apply_payload}")
     except (urlerror.HTTPError, RuntimeError):
         apply_via = "vault"
         fallback_original_content = str(
@@ -374,7 +402,7 @@ def run_walkthrough() -> None:
     if not apply_payload.get("ok"):
         raise fail(f"apply request failed: {apply_payload}")
     if apply_via == "vault":
-        print("Agent apply unavailable; used deterministic vault-route fallback.")
+        print("Job apply unavailable; used deterministic vault-route fallback.")
 
     print("Waiting for rendered apply update...")
     if not wait_until(
@@ -386,14 +414,13 @@ def run_walkthrough() -> None:
     print(f"Apply completed. Refresh /projects/forge-v2 to see token: {apply_token}")
     pause_step("After confirming apply output in browser, press any key...")
 
-    step_header("7", "Run Undo Through Overlay")
-    undo_url = f"http://{DEMO_OVERLAY_HOST}:{DEMO_OVERLAY_PORT}/api/agent/undo"
+    step_header("7", "Run Undo Job Through Overlay")
     undo_payload = (
-        json.loads(http_post_json(undo_url, {}).decode("utf-8"))
-        if apply_via == "agent"
+        poll_job(base_url, str(submit_job(base_url, "undo").get("job_id")))
+        if apply_via == "job"
         else vault_restore_content(api_base, "projects/forge-v2.md", fallback_original_content or "")
     )
-    print("Undo response:")
+    print("Undo terminal response:")
     print(json.dumps(undo_payload, indent=2, sort_keys=True))
     if not undo_payload.get("ok"):
         raise fail(f"undo request failed: {undo_payload}")
@@ -414,7 +441,7 @@ def run_walkthrough() -> None:
     print("Final checks:")
     print(f" - kiln incremental rebuilds observed: {kiln_rebuilds}")
     print(f" - overlay rebuild webhooks observed (204): {overlay_hooks}")
-    print(" - overlay /api proxy health/apply/undo path succeeded")
+    print(" - overlay /api + /v1 jobs proxy paths succeeded")
     print("\nInteractive walkthrough complete.")
 
     maybe_keep_stack_running()

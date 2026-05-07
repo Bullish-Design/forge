@@ -83,14 +83,15 @@ Operator actions:
   - `POST /api/vault/vcs/sync`
   - `GET /api/vault/vcs/sync/status`
 
-## Step 6: Demonstrate Apply Through Overlay
+## Step 6: Demonstrate Apply Job Through Overlay
 
 Objective:
 - Show real agent mutation flow end-to-end.
 
 Talking points:
-- `POST /api/agent/apply` is sent to overlay.
+- `POST /v1/jobs` submits an `apply` job through overlay.
 - Overlay proxies to `obsidian-agent`.
+- UI/scripts then poll `GET /v1/jobs/{job_id}` until terminal state.
 - Agent updates `projects/forge-v2.md` via vault tools.
 - Kiln rebuilds and rendered HTML updates reflect the mutation.
 
@@ -98,13 +99,14 @@ Operator actions:
 - Review JSON apply response.
 - Refresh `projects/forge-v2` and point out the apply token.
 
-## Step 7: Demonstrate Undo Through Overlay
+## Step 7: Demonstrate Undo Job Through Overlay
 
 Objective:
 - Show rollback behavior and resulting rebuild.
 
 Talking points:
-- `POST /api/undo` removes the last agent mutation.
+- `POST /v1/jobs` with operation `undo` submits rollback as a queue job.
+- `GET /v1/jobs/{job_id}` reaches `succeeded` when rollback is complete.
 - Rebuild happens automatically again.
 - Rendered HTML no longer includes the apply token.
 
@@ -122,7 +124,7 @@ Talking points:
 - Confirmed kiln-fork webhook integration (`--on-rebuild`) through overlay.
 - Confirmed overlay injection and API proxy path.
 - Confirmed sync bootstrap endpoint flow via overlay proxy.
-- Confirmed apply/undo mutation lifecycle using real obsidian-agent wiring.
+- Confirmed queue-based apply/undo mutation lifecycle using real obsidian-agent wiring.
 
 Operator actions:
 - Decide whether to keep stack alive for ad hoc exploration or clean up.

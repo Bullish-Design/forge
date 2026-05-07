@@ -51,6 +51,31 @@ def http_put_json(url: str, payload: dict[str, object], timeout: float = 30.0) -
         return json.loads(resp.read().decode("utf-8"))
 
 
+def submit_job(base: str, operation: str, payload: dict[str, object] | None = None, timeout: float = 30.0) -> dict[str, object]:
+    body: dict[str, object] = {"operation": operation}
+    if payload is not None:
+        body["payload"] = payload
+    return http_post_json(f"{base}/v1/jobs", body, timeout=timeout)
+
+
+def fetch_job(base: str, job_id: str, timeout: float = 20.0) -> dict[str, object]:
+    return http_get_json(f"{base}/v1/jobs/{job_id}", timeout=timeout)
+
+
+def poll_job(base: str, job_id: str, timeout_s: float = 130.0) -> dict[str, object]:
+    terminal = {"succeeded", "failed"}
+    latest: dict[str, object] = {}
+
+    def _done() -> bool:
+        nonlocal latest
+        latest = fetch_job(base, job_id, timeout=10.0)
+        return str(latest.get("status")) in terminal
+
+    if not wait_until(_done, timeout_s=timeout_s, interval_s=0.5):
+        raise RuntimeError(f"job {job_id} did not complete in time")
+    return latest
+
+
 def wait_until(predicate, timeout_s: float, interval_s: float = 0.5) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -139,6 +164,18 @@ def main() -> int:
         if "status" not in status_payload:
             raise RuntimeError(f"unexpected sync status payload: {status_payload}")
 
+        print("[docker-validate] checking queue job endpoints...")
+        health_job = submit_job(base, "apply", {"instruction": "Return health summary for this note.", "current_file": "index.md"})
+        health_job_id = str(health_job.get("job_id", "")).strip()
+        if not health_job_id:
+            raise RuntimeError(f"missing job_id from submit response: {health_job}")
+        health_terminal = poll_job(base, health_job_id, timeout_s=180.0)
+        if health_terminal.get("status") != "succeeded":
+            raise RuntimeError(f"apply job failed: {health_terminal}")
+        jobs_payload = http_get_json(f"{base}/v1/jobs?limit=10")
+        if not isinstance(jobs_payload.get("jobs"), list):
+            raise RuntimeError(f"unexpected jobs list payload: {jobs_payload}")
+
         print("[docker-validate] testing write -> rebuild -> undo flow...")
         path = "docker-validation.md"
         token = f"docker-validation-token-{int(time.time())}"
@@ -161,9 +198,13 @@ def main() -> int:
         ensure_contains(f"{base}/ops/ops.css", "#forge-trigger", timeout_s=60.0)
         ensure_contains(f"{base}/ops/ops.css", "#forge-modal", timeout_s=60.0)
 
-        undo = http_post_json(f"{api}/vault/undo", {})
-        if not undo.get("ok", False):
-            raise RuntimeError(f"undo failed: {undo}")
+        undo_submit = submit_job(base, "undo")
+        undo_job_id = str(undo_submit.get("job_id", "")).strip()
+        if not undo_job_id:
+            raise RuntimeError(f"missing undo job id: {undo_submit}")
+        undo = poll_job(base, undo_job_id, timeout_s=180.0)
+        if undo.get("status") != "succeeded":
+            raise RuntimeError(f"undo job failed: {undo}")
 
         def _token_gone() -> bool:
             try:

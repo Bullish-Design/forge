@@ -83,9 +83,9 @@ http://127.0.0.1:18080/index.html
 2. Kiln watcher process includes `--no-serve` and `--on-rebuild`.
 3. Overlay injection is present (`/ops/ops.css`, `/ops/ops.js` in served HTML).
 4. Rebuild webhook delivery is confirmed (`POST /internal/rebuild` -> `204`) after real vault mutation.
-5. `/api/health`, `/api/agent/apply`, and `/api/undo` work through overlay proxy.
+5. `/api/health` and queue job endpoints (`POST /v1/jobs`, `GET /v1/jobs/{id}`, `GET /v1/jobs`) work through overlay proxy.
 6. Sync endpoints (`ensure`, `remote`, `sync`, `status`) work through overlay proxy.
-7. Apply/undo produce real vault and rendered HTML changes end-to-end.
+7. Apply/undo jobs produce real vault and rendered HTML changes end-to-end.
 
 ## Troubleshooting
 
