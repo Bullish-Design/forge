@@ -8,11 +8,13 @@ This directory contains the production overlay assets injected by `forge-overlay
 ## Features
 
 - Floating trigger button with unread API log badge.
-- Modal UI for agent actions (`/api/agent/apply`, `/api/undo`, `/api/health`).
-- Live API log capture via client-side `fetch` intercept for `/api/*`.
+- Modal UI for agent actions via job queue APIs (`/v1/jobs`) plus `/api/health`.
+- Live API log capture via client-side `fetch` intercept for `/api/*` and `/v1/*`.
 - Collapsible Global + This Page log groups.
 - Per-request detail panels (request/response/error payloads).
 - Model/token metadata badges when usage/model fields are present.
+- Queue job lifecycle visibility (`queued` / `running` / `succeeded` / `failed`).
+- In-flight job rehydration after reload using local storage.
 - SSE connection status (`/ops/events`).
 - Reload button and modal-open persistence via `localStorage`.
 
