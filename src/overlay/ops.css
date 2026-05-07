@@ -243,6 +243,36 @@
   border-color: #3b82f6;
 }
 
+/* Job status */
+#forge-modal .forge-job-status {
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 11px;
+  color: #cbd5e1;
+  background: #0f172a;
+}
+
+#forge-modal .forge-job-status.queued {
+  border-color: #475569;
+  color: #cbd5e1;
+}
+
+#forge-modal .forge-job-status.running {
+  border-color: #3b82f6;
+  color: #bfdbfe;
+}
+
+#forge-modal .forge-job-status.succeeded {
+  border-color: #10b981;
+  color: #86efac;
+}
+
+#forge-modal .forge-job-status.failed {
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
 /* Response output */
 #forge-modal .forge-output {
   white-space: pre-wrap;

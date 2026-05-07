@@ -1,18 +1,30 @@
 (() => {
-  // ── State ───────────────────────────────────────────
   let modalOpen = localStorage.getItem("forge-modal-open") === "true";
-  // ── Log State ───────────────────────────────────────
+
   const LOGS_STORAGE_KEY = "forge-overlay-logs-v1";
+  const JOBS_STORAGE_KEY = "forge-overlay-jobs-v1";
   const logs = [];
   const MAX_LOGS = 50;
   let logIdCounter = 0;
   let unseenCount = 0;
-  // Track which log entries are expanded
+
   const expandedGlobalLogIds = new Set();
   const expandedPageLogIds = new Set();
   let logsExpanded = false;
   let globalLogsExpanded = false;
   let pageLogsExpanded = false;
+
+  const JOB_POLL_INITIAL_MS = 500;
+  const JOB_POLL_MAX_MS = 3000;
+  const JOB_POLL_BACKOFF = 2;
+  const JOB_POLL_TIMEOUT_MS = 130000;
+  const JOB_MAX_TRANSIENT_ERRORS = 3;
+  const MAX_JOBS = 30;
+
+  let activeJob = null;
+  let pollAbortController = null;
+  let recentJobs = [];
+
   const badgeEl = () => document.querySelector("#forge-trigger .forge-badge");
 
   function loadPersistedLogs() {
@@ -24,25 +36,51 @@
       const sliced = parsed.slice(0, MAX_LOGS);
       logs.splice(0, logs.length, ...sliced);
       for (const entry of logs) {
-        if (entry && typeof entry.id === "number" && entry.id > logIdCounter) {
-          logIdCounter = entry.id;
-        }
+        if (entry && typeof entry.id === "number" && entry.id > logIdCounter) logIdCounter = entry.id;
       }
-    } catch {
-      // Ignore malformed persisted logs.
-    }
+    } catch {}
   }
 
   function persistLogs() {
     try {
       localStorage.setItem(LOGS_STORAGE_KEY, JSON.stringify(logs.slice(0, MAX_LOGS)));
+    } catch {}
+  }
+
+  function loadPersistedJobs() {
+    try {
+      const raw = localStorage.getItem(JOBS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      recentJobs = parsed.slice(0, MAX_JOBS);
+      const unfinished = recentJobs.find((job) => !isTerminalStatus(job.status));
+      if (unfinished) activeJob = unfinished;
     } catch {
-      // Ignore storage write failures.
+      recentJobs = [];
     }
   }
 
+  function persistJobs() {
+    try {
+      localStorage.setItem(JOBS_STORAGE_KEY, JSON.stringify(recentJobs.slice(0, MAX_JOBS)));
+    } catch {}
+  }
+
+  function upsertJob(job) {
+    const idx = recentJobs.findIndex((j) => j.id === job.id);
+    if (idx >= 0) {
+      recentJobs[idx] = { ...recentJobs[idx], ...job };
+    } else {
+      recentJobs.unshift(job);
+      if (recentJobs.length > MAX_JOBS) recentJobs.length = MAX_JOBS;
+    }
+    persistJobs();
+    renderJobStatus();
+  }
+
   function addLog(entry) {
-    logs.unshift(entry); // newest first
+    logs.unshift(entry);
     if (logs.length > MAX_LOGS) logs.pop();
     persistLogs();
     if (!modalOpen) {
@@ -79,7 +117,7 @@
         const statusClass = entry.status >= 400 || entry.error ? "error" : "";
         const statusText = entry.error ? "ERR" : String(entry.status);
         const duration = entry.duration_ms > 0 ? (entry.duration_ms / 1000).toFixed(1) + "s" : "...";
-        const shortUrl = entry.url.replace(/^\/api\//, "");
+        const shortUrl = entry.url.replace(/^\/(api|v1)\//, "");
         const meta = extractLogMeta(entry.response);
         const metaPieces = [];
         if (meta.model) metaPieces.push(`<span class="forge-log-meta-item">${escapeHtml(meta.model)}</span>`);
@@ -95,9 +133,7 @@
           const resStr = typeof entry.response === "string" ? entry.response : JSON.stringify(entry.response, null, 2);
           detailHtml += `<div class="forge-log-detail-label">Response</div><pre>${escapeHtml(resStr)}</pre>`;
         }
-        if (entry.error) {
-          detailHtml += `<div class="forge-log-detail-label">Error</div><pre>${escapeHtml(entry.error)}</pre>`;
-        }
+        if (entry.error) detailHtml += `<div class="forge-log-detail-label">Error</div><pre>${escapeHtml(entry.error)}</pre>`;
 
         return `
         <div class="forge-log-entry" data-log-id="${entry.id}">
@@ -119,40 +155,20 @@
     if (!response || typeof response !== "object") return {};
     const model = findFirstString(response, ["model", "llm_model", "model_name"]);
     const usage = findUsageObject(response);
-    const totalTokens =
-      typeof usage?.total_tokens === "number"
-        ? usage.total_tokens
-        : typeof usage?.totalTokens === "number"
-          ? usage.totalTokens
-          : null;
-    const inputTokens =
-      typeof usage?.prompt_tokens === "number"
-        ? usage.prompt_tokens
-        : typeof usage?.input_tokens === "number"
-          ? usage.input_tokens
-          : null;
-    const outputTokens =
-      typeof usage?.completion_tokens === "number"
-        ? usage.completion_tokens
-        : typeof usage?.output_tokens === "number"
-          ? usage.output_tokens
-          : null;
+    const totalTokens = typeof usage?.total_tokens === "number" ? usage.total_tokens : typeof usage?.totalTokens === "number" ? usage.totalTokens : null;
+    const inputTokens = typeof usage?.prompt_tokens === "number" ? usage.prompt_tokens : typeof usage?.input_tokens === "number" ? usage.input_tokens : null;
+    const outputTokens = typeof usage?.completion_tokens === "number" ? usage.completion_tokens : typeof usage?.output_tokens === "number" ? usage.output_tokens : null;
     let tokens = null;
-    if (totalTokens != null) {
-      tokens = `${totalTokens} tok`;
-    } else if (inputTokens != null || outputTokens != null) {
-      const inText = inputTokens != null ? String(inputTokens) : "?";
-      const outText = outputTokens != null ? String(outputTokens) : "?";
-      tokens = `${inText}/${outText} tok`;
-    }
+    if (totalTokens != null) tokens = `${totalTokens} tok`;
+    else if (inputTokens != null || outputTokens != null) tokens = `${inputTokens != null ? String(inputTokens) : "?"}/${outputTokens != null ? String(outputTokens) : "?"} tok`;
     return { model, tokens };
   }
 
   function findUsageObject(value) {
     if (!value || typeof value !== "object") return null;
     if (value.usage && typeof value.usage === "object") return value.usage;
-    if (value.metrics && value.metrics.usage && typeof value.metrics.usage === "object") return value.metrics.usage;
-    if (value.result && value.result.usage && typeof value.result.usage === "object") return value.result.usage;
+    if (value.metrics?.usage && typeof value.metrics.usage === "object") return value.metrics.usage;
+    if (value.result?.usage && typeof value.result.usage === "object") return value.result.usage;
     return null;
   }
 
@@ -170,24 +186,49 @@
   }
 
   function escapeHtml(str) {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  // ── Fetch Intercept ─────────────────────────────────
+  function isTerminalStatus(status) {
+    return status === "succeeded" || status === "failed";
+  }
+
+  function updateActionButtons() {
+    const busy = !!activeJob && !isTerminalStatus(activeJob.status);
+    const sendBtn = document.getElementById("forge-send");
+    const undoBtn = document.getElementById("forge-undo");
+    if (sendBtn) sendBtn.disabled = busy;
+    if (undoBtn) undoBtn.disabled = busy;
+  }
+
+  function renderJobStatus() {
+    const statusEl = document.getElementById("forge-job-status");
+    if (!statusEl) return;
+    if (!activeJob) {
+      statusEl.textContent = "No active job.";
+      statusEl.className = "forge-job-status";
+      updateActionButtons();
+      return;
+    }
+    const cls = `forge-job-status ${activeJob.status || "queued"}`;
+    statusEl.className = cls;
+    const summary = activeJob.result?.summary || activeJob.error || activeJob.result?.error || "";
+    statusEl.textContent = `Job ${activeJob.id} • ${activeJob.operation} • ${activeJob.status}${summary ? ` • ${summary}` : ""}`;
+    updateActionButtons();
+  }
+
   const originalFetch = window.fetch;
   window.fetch = async function (...args) {
     const [resource, options] = args;
     const url = typeof resource === "string" ? resource : resource.url;
 
-    if (!url.includes("/api/")) {
-      return originalFetch.apply(this, args);
-    }
+    if (!(url.includes("/api/") || url.includes("/v1/"))) return originalFetch.apply(this, args);
 
     const entry = {
       id: ++logIdCounter,
       timestamp: Date.now(),
       method: (options && options.method) || "GET",
-      url: url,
+      url,
       page_file: detectCurrentFile(),
       page_path: window.location.pathname,
       request: null,
@@ -231,16 +272,16 @@
       throw err;
     }
   };
-  loadPersistedLogs();
 
-  // ── Trigger Button ──────────────────────────────────
+  loadPersistedLogs();
+  loadPersistedJobs();
+
   const trigger = document.createElement("button");
   trigger.id = "forge-trigger";
   trigger.setAttribute("aria-label", "Open Forge overlay");
   trigger.innerHTML = `<span aria-hidden="true">\u2692</span><span class="forge-badge"></span>`;
   document.body.appendChild(trigger);
 
-  // ── Backdrop + Modal ────────────────────────────────
   const backdrop = document.createElement("div");
   backdrop.id = "forge-backdrop";
   backdrop.innerHTML = `
@@ -264,6 +305,10 @@
           <button id="forge-send" class="forge-primary">Send</button>
           <button id="forge-undo">Undo</button>
           <button id="forge-health">Health</button>
+        </div>
+
+        <div class="forge-section">
+          <div id="forge-job-status" class="forge-job-status">No active job.</div>
         </div>
 
         <div class="forge-section" style="margin-top:12px;">
@@ -297,7 +342,6 @@
   `;
   document.body.appendChild(backdrop);
 
-  // ── Log Viewer Toggle ───────────────────────────────
   document.getElementById("forge-logs-toggle").addEventListener("click", () => {
     logsExpanded = !logsExpanded;
     document.getElementById("forge-logs-list").classList.toggle("open", logsExpanded);
@@ -316,7 +360,6 @@
     document.getElementById("forge-logs-page-caret").classList.toggle("open", pageLogsExpanded);
   });
 
-  // ── Log Entry Expand/Collapse (event delegation) ───
   function attachLogEntryToggle(listId, expandedSet) {
     const list = document.getElementById(listId);
     list.addEventListener("click", (e) => {
@@ -338,13 +381,11 @@
   attachLogEntryToggle("forge-logs-global-list", expandedGlobalLogIds);
   attachLogEntryToggle("forge-logs-page-list", expandedPageLogIds);
 
-  // Keep This Page counts accurate after client-side nav.
   const syncCurrentFilePathAndLogs = () => {
     syncCurrentFilePath();
     renderLogs();
   };
 
-  // ── Current File Detection ──────────────────────────
   function detectCurrentFile() {
     const p = window.location.pathname.replace(/^\//, "").replace(/\/$/, "");
     if (!p) return "index.md";
@@ -383,7 +424,6 @@
     return result;
   };
 
-  // ── API Helpers ─────────────────────────────────────
   const outputEl = document.getElementById("forge-output");
   const instructionEl = document.getElementById("forge-instruction");
 
@@ -399,41 +439,125 @@
     });
     const text = await response.text();
     try {
-      return JSON.parse(text);
+      return { status: response.status, data: JSON.parse(text) };
     } catch {
-      return { status: response.status, body: text };
+      return { status: response.status, data: { body: text } };
     }
   }
 
-  // ── Action Buttons ──────────────────────────────────
+  async function submitJob(operation, payload) {
+    const body = { operation };
+    if (payload) body.payload = payload;
+    const result = await postJson("/v1/jobs", body);
+    if (result.status === 502 && result.data?.error === "upstream_unavailable") throw new Error("upstream_unavailable");
+    if (result.status === 504 && result.data?.error === "upstream_timeout") throw new Error("upstream_timeout");
+    if (result.status !== 202 && result.status !== 200) {
+      throw new Error(result.data?.error || `submit failed (${result.status})`);
+    }
+    return result.data;
+  }
+
+  async function fetchJob(jobId, signal) {
+    const response = await fetch(`/v1/jobs/${jobId}`, { signal });
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`invalid job response (${response.status})`);
+    }
+    if (!response.ok) throw new Error(data?.error || `poll failed (${response.status})`);
+    return data;
+  }
+
+  async function pollJobUntilTerminal(jobId) {
+    const startTime = Date.now();
+    let interval = JOB_POLL_INITIAL_MS;
+    let consecutiveErrors = 0;
+
+    pollAbortController = new AbortController();
+    const signal = pollAbortController.signal;
+
+    while (true) {
+      if (signal.aborted) throw new Error("poll cancelled");
+      if (Date.now() - startTime > JOB_POLL_TIMEOUT_MS) throw new Error(`Job ${jobId} timed out after ${Math.round((Date.now() - startTime) / 1000)}s`);
+
+      await new Promise((resolve) => setTimeout(resolve, interval));
+      try {
+        const job = await fetchJob(jobId, signal);
+        consecutiveErrors = 0;
+        activeJob = job;
+        upsertJob(job);
+        if (isTerminalStatus(job.status)) return job;
+        interval = Math.min(interval * JOB_POLL_BACKOFF, JOB_POLL_MAX_MS);
+      } catch (err) {
+        if (signal.aborted) throw err;
+        consecutiveErrors += 1;
+        if (consecutiveErrors >= JOB_MAX_TRANSIENT_ERRORS) throw new Error(`polling failed: ${err.message}`);
+      }
+    }
+  }
+
+  async function submitAndTrack(operation, payload) {
+    const accepted = await submitJob(operation, payload);
+    activeJob = {
+      id: accepted.job_id,
+      operation,
+      status: accepted.status || "queued",
+      created_at: accepted.created_at,
+      request: payload || {},
+      result: null,
+      error: null,
+    };
+    upsertJob(activeJob);
+    renderJobStatus();
+
+    const finalJob = await pollJobUntilTerminal(accepted.job_id);
+    activeJob = finalJob;
+    upsertJob(finalJob);
+    return finalJob;
+  }
+
   document.getElementById("forge-send").addEventListener("click", async () => {
     const instruction = instructionEl.value.trim() || "Add a concise useful update for this note.";
     const currentFile = filePathEl.value.trim();
-    setOutput("Sending...");
+    setOutput("Submitting apply job...");
     try {
-      const data = await postJson("/api/agent/apply", { instruction, current_file: currentFile });
-      if (data && data.error === "upstream_unavailable") {
-        setOutput({
-          error: "upstream_unavailable",
-          detail:
-            "Overlay API proxy could not reach or await agent apply completion in time. Verify agent is healthy and consider reducing prompt scope or increasing proxy timeout in forge-overlay config.",
-          attempted_current_file: currentFile,
-        });
-        return;
+      const finalJob = await submitAndTrack("apply", { instruction, current_file: currentFile });
+      if (finalJob.status === "succeeded") {
+        setOutput(finalJob.result || finalJob);
+      } else {
+        setOutput({ error: finalJob.error || finalJob.result?.error || "job failed", job: finalJob });
       }
-      setOutput(data);
     } catch (err) {
-      setOutput("Error: " + err.message);
+      if (err.message === "upstream_timeout") {
+        setOutput({ error: "upstream_timeout", detail: "Overlay proxy timed out waiting for upstream. Check overlay timeout or reduce prompt scope." });
+      } else if (err.message === "upstream_unavailable") {
+        setOutput({ error: "upstream_unavailable", detail: "Overlay proxy could not reach obsidian-agent upstream." });
+      } else {
+        setOutput("Error: " + err.message);
+      }
+    } finally {
+      updateActionButtons();
     }
   });
 
   document.getElementById("forge-undo").addEventListener("click", async () => {
-    setOutput("Undoing...");
+    setOutput("Submitting undo job...");
     try {
-      const data = await postJson("/api/undo", {});
-      setOutput(data);
+      const finalJob = await submitAndTrack("undo", null);
+      if (finalJob.status === "succeeded") setOutput(finalJob.result || finalJob);
+      else setOutput({ error: finalJob.error || finalJob.result?.error || "undo failed", job: finalJob });
     } catch (err) {
-      setOutput("Error: " + err.message);
+      if (err.message === "upstream_timeout") {
+        setOutput({ error: "upstream_timeout", detail: "Overlay proxy timed out waiting for upstream during undo." });
+      } else if (err.message === "upstream_unavailable") {
+        setOutput({ error: "upstream_unavailable", detail: "Overlay proxy could not reach obsidian-agent upstream during undo." });
+      } else {
+        setOutput("Error: " + err.message);
+      }
+    } finally {
+      updateActionButtons();
     }
   });
 
@@ -448,7 +572,6 @@
     }
   });
 
-  // ── SSE Connection ──────────────────────────────────
   const sseStatusEl = document.getElementById("forge-sse-status");
   let sseCount = 0;
 
@@ -464,12 +587,10 @@
     sseStatusEl.textContent = "SSE: reconnecting...";
   };
 
-  // Prevent clicks inside the modal from closing via backdrop
   document.getElementById("forge-modal").addEventListener("click", (e) => {
     e.stopPropagation();
   });
 
-  // ── Open / Close ────────────────────────────────────
   function openModal() {
     syncCurrentFilePathAndLogs();
     modalOpen = true;
@@ -479,6 +600,7 @@
     unseenCount = 0;
     const b = badgeEl();
     if (b) b.textContent = "";
+    renderJobStatus();
   }
 
   function closeModal() {
@@ -496,13 +618,19 @@
     if (e.key === "Escape" && modalOpen) closeModal();
   });
 
-  // ── Reload Button ───────────────────────────────────
   document.getElementById("forge-reload").addEventListener("click", () => {
     location.reload();
   });
 
-  // ── Restore state on load ───────────────────────────
-  if (modalOpen) {
-    openModal();
+  if (activeJob && !isTerminalStatus(activeJob.status)) {
+    pollJobUntilTerminal(activeJob.id)
+      .then((job) => {
+        activeJob = job;
+        upsertJob(job);
+      })
+      .catch(() => {});
   }
+
+  renderJobStatus();
+  if (modalOpen) openModal();
 })();
